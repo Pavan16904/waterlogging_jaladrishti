@@ -1,0 +1,18 @@
+{
+  "name": "waterlogging-project-root",
+  "version": "2.0.0",
+  "description": "AI-Based Waterlogging Detection and Drainage Advisory System Using Multi-Source Satellite Imagery",
+  "scripts": {
+    "dev": "concurrently -k -n \"ML,BACKEND,FRONTEND\" -c \"magenta,blue,cyan\" \"python -m uvicorn main:app --app-dir ml_service --port 8000\" \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "start": "concurrently -k -n \"ML,BACKEND,FRONTEND\" -c \"magenta,blue,cyan\" \"python -m uvicorn main:app --app-dir ml_service --port 8000\" \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "ml": "python -m uvicorn main:app --app-dir ml_service --port 8000",
+    "backend": "npm --prefix backend run dev",
+    "frontend": "npm --prefix frontend run dev",
+    "train": "python ml_service/train_model.py",
+    "seed": "cd backend && npm run seed",
+    "build": "cd backend && npm run build && cd ../frontend && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
