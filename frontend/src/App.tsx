@@ -35,7 +35,7 @@ export function App() {
 
   // Study Areas State
   const [studyAreas, setStudyAreas] = useState<StudyArea[]>([]);
-  const [selectedAreaId, setSelectedAreaId] = useState<string>('bengaluru_bellandur');
+  const [selectedAreaId, setSelectedAreaId] = useState<string>('bengaluru_urban');
   const [currentArea, setCurrentArea] = useState<StudyArea | null>(null);
 
   // Analysis Parameters
@@ -74,9 +74,10 @@ export function App() {
     try {
       const areas = await api.getStudyAreas();
       setStudyAreas(areas);
-      if (areas.length > 0 && !selectedAreaId) {
-        setSelectedAreaId(areas[0].id);
-        setCurrentArea(areas[0]);
+      if (areas.length > 0) {
+        const match = areas.find((a) => a.id === selectedAreaId) || areas[0];
+        setSelectedAreaId(match.id);
+        setCurrentArea(match);
       }
     } catch (err) {
       console.error('Failed to load study areas:', err);

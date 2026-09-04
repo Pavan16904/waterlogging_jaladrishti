@@ -158,7 +158,7 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
         <div className="pb-4 border-b border-slate-200 dark:border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="px-3 py-1 rounded-full badge-rose text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+              <span className="px-3 py-1 rounded-full badge-neon-rose text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
                 <ShieldAlert className="w-3.5 h-3.5" />
                 Civil Engineering Mitigation & Municipal Dispatch
               </span>
@@ -424,7 +424,7 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
                       <div>
                         <div className="flex items-center gap-2">
                           <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            isCritical ? 'badge-rose' : isHigh ? 'badge-amber' : 'badge-emerald'
+                            isCritical ? 'badge-neon-rose' : isHigh ? 'badge-neon-amber' : 'badge-neon-emerald'
                           }`}>
                             {adv.priority}
                           </span>
@@ -497,10 +497,10 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
                         title="Click to toggle deployment status"
                         className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all shadow-sm ${
                           details.status === 'Completed'
-                            ? 'badge-emerald hover:bg-emerald-500/20'
+                            ? 'badge-neon-emerald hover:bg-emerald-500/20'
                             : details.status === 'In Progress'
-                            ? 'badge-cyan hover:bg-cyan-500/20'
-                            : 'badge-rose hover:bg-rose-500/20'
+                            ? 'badge-neon-cyan hover:bg-cyan-500/20'
+                            : 'badge-neon-rose hover:bg-rose-500/20'
                         }`}
                       >
                         {details.status}
