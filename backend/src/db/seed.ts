@@ -1081,13 +1081,18 @@ export async function seedDatabase() {
       ]
     );
 
-    // 3. Insert Analysis Run
+    // 3. Insert Analysis Run — always use today / 7-days-ago so dates stay current
     const runId = `run_${dist.id}_monsoon_2026`;
     const waterloggedPct = Number(((dist.inundated_km2 / dist.area_km2) * 100).toFixed(1));
+    const todayStr = new Date().toISOString().split('T')[0];
+    const preEventDt = new Date(); preEventDt.setDate(preEventDt.getDate() - 7);
+    const preEventStr = preEventDt.toISOString().split('T')[0];
     await query(
       `INSERT INTO analysis_runs (id, study_area_id, model_type, pre_event_date, post_event_date, rainfall_mm, total_area_km2, waterlogged_area_km2, waterlogged_percentage, severe_count, moderate_count, low_count)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (id) DO UPDATE SET
+         pre_event_date = EXCLUDED.pre_event_date,
+         post_event_date = EXCLUDED.post_event_date,
          rainfall_mm = EXCLUDED.rainfall_mm,
          total_area_km2 = EXCLUDED.total_area_km2,
          waterlogged_area_km2 = EXCLUDED.waterlogged_area_km2,
@@ -1099,8 +1104,8 @@ export async function seedDatabase() {
         runId,
         dist.id,
         'random_forest',
-        '2026-06-10',
-        '2026-08-25',
+        preEventStr,
+        todayStr,
         dist.rainfall,
         dist.area_km2,
         dist.inundated_km2,

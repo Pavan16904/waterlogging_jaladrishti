@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { query } from '../db/index.js';
 import axios from 'axios';
 
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://127.0.0.1:8000';
 
 export async function calculateIrrigation(req: Request, res: Response) {
   try {

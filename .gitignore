@@ -19,6 +19,9 @@ out/
 .env.test.local
 .env.production.local
 *.env
+*.sqlite
+*.sqlite3
+backend/data/
 
 # Python & ML Artifacts
 __pycache__/

@@ -160,3 +160,69 @@ export interface ModelMetrics {
     roc_auc: number;
   }>;
 }
+
+export interface IoTSensor {
+  id: string;
+  name: string;
+  districtId: string;
+  districtName: string;
+  lat: number;
+  lng: number;
+  sensorType: 'ultrasonic_level' | 'hydrostatic_pressure' | 'radar_velocity' | 'swale_optical';
+  currentDepthM: number;
+  warningThresholdM: number;
+  dangerThresholdM: number;
+  maxDepthM: number;
+  flowRateLps: number;
+  siltationPct: number;
+  pumpStatus: 'AUTO_IDLE' | 'AUTO_RUNNING' | 'MANUAL_ON' | 'MANUAL_OFF' | 'EMERGENCY_BOOST';
+  pumpCapacityHp: number;
+  pumpDischargeLps: number;
+  batteryPct: number;
+  solarWatts: number;
+  signalDbm: number;
+  trend: 'rising' | 'falling' | 'stable';
+  history: Array<{ time: string; depthM: number; flowLps: number }>;
+  lastUpdated: string;
+}
+
+export interface RadarMeta {
+  provider: string;
+  host: string;
+  pastFrames: Array<{ time: number; path: string }>;
+  nowcastFrames: Array<{ time: number; path: string }>;
+  satelliteFrames: Array<{ time: number; path: string }>;
+  colorScheme: number;
+  smooth: number;
+  snow: number;
+  lastUpdated: string;
+}
+
+export interface LiveAlert {
+  id: string;
+  level: 'CRITICAL' | 'WARNING' | 'ADVISORY' | 'INFO';
+  district: string;
+  title: string;
+  message: string;
+  action: string;
+  agency: string;
+  timestamp: string;
+}
+
+export interface RealtimeNowcast {
+  district: string;
+  coordinates: { lat: number; lng: number };
+  zone: string;
+  telemetry: {
+    currentRainRateMmH: number;
+    currentTempC: number;
+    currentHumidityPct: number;
+    currentWindSpeedKmh: number;
+    simulatedInflowM3H: number;
+    riskLevel: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
+    radarReflectivityDbz: number;
+    evapotranspirationEt0MmDay: number;
+  };
+  nowcastAdvice: string;
+  timestamp: string;
+}

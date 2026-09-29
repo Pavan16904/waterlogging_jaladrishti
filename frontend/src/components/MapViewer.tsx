@@ -1,8 +1,26 @@
-import React, { useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, Polygon, Popup, useMap, Tooltip, CircleMarker } from 'react-leaflet';
-import { StudyArea, SeverityZone, DrainageAdvisory } from '../types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { MapContainer, TileLayer, Polygon, Popup, useMap, Tooltip, CircleMarker, Marker } from 'react-leaflet';
+import { StudyArea, SeverityZone, DrainageAdvisory, IoTSensor, RadarMeta } from '../types';
 import { ActiveSensorLayer, BaseMapType } from './LayerControlPanel';
-import { AlertTriangle, Droplets, Mountain, Radio, ShieldCheck, Compass, Info, ArrowUpRight } from 'lucide-react';
+import { RadarPlaybackBar } from './RadarPlaybackBar';
+import { 
+  AlertTriangle, 
+  Droplets, 
+  Mountain, 
+  Radio, 
+  ShieldCheck, 
+  Compass, 
+  Info, 
+  ArrowUpRight,
+  Gauge,
+  Power,
+  BatteryCharging,
+  Signal,
+  TrendingUp,
+  TrendingDown,
+  CloudRain,
+  Zap
+} from 'lucide-react';
 import L from 'leaflet';
 
 interface MapViewerProps {
@@ -15,6 +33,12 @@ interface MapViewerProps {
   showComparison: boolean;
   splitPosition: number;
   onSelectZone: (zone: SeverityZone) => void;
+  // Real-Time Doppler & IoT Telemetry Props
+  radarMeta?: RadarMeta | null;
+  iotSensors?: IoTSensor[];
+  showIoTSensors?: boolean;
+  isNowcastActive?: boolean;
+  onTriggerPumpCommand?: (sensor: IoTSensor, command: 'AUTO' | 'MANUAL_ON' | 'MANUAL_OFF' | 'EMERGENCY_BOOST') => void;
 }
 
 // Map center adjuster on study area change
@@ -54,8 +78,32 @@ export const MapViewer: React.FC<MapViewerProps> = ({
   layerOpacity,
   showComparison,
   splitPosition,
-  onSelectZone
+  onSelectZone,
+  radarMeta = null,
+  iotSensors = [],
+  showIoTSensors = true,
+  isNowcastActive = false,
+  onTriggerPumpCommand
 }) => {
+  // Radar Animation Loop State
+  const [radarFrameIndex, setRadarFrameIndex] = useState<number>(0);
+  const [isRadarPlaying, setIsRadarPlaying] = useState<boolean>(true);
+  const [radarOpacity, setRadarOpacity] = useState<number>(0.75);
+
+  const radarFrames = radarMeta?.pastFrames || [];
+  const currentRadarFrame = radarFrames[radarFrameIndex];
+
+  // Auto loop radar frames
+  useEffect(() => {
+    if (!isRadarPlaying || radarFrames.length === 0 || activeLayer !== 'realtime_radar') {
+      return;
+    }
+    const timer = setInterval(() => {
+      setRadarFrameIndex((prev) => (prev + 1) % radarFrames.length);
+    }, 750);
+    return () => clearInterval(timer);
+  }, [isRadarPlaying, radarFrames.length, activeLayer]);
+
   const center: [number, number] = useMemo(() => {
     if (studyArea) {
       return [studyArea.center_lat, studyArea.center_lng];
@@ -86,7 +134,6 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         break;
 
       case 'probability':
-        // Color gradient from low blue to high magenta/red
         const p = zone.probability;
         if (p >= 0.75) {
           fillColor = '#e11d48';
@@ -105,7 +152,6 @@ export const MapViewer: React.FC<MapViewerProps> = ({
 
       case 'mndwi':
       case 'ndwi':
-        // Spectral water index - deep blues and cyans
         const indexVal = activeLayer === 'mndwi' ? (zone.mndwi ?? 0) : (zone.ndwi ?? 0);
         if (indexVal > 0.4) {
           fillColor = '#0284c7';
@@ -120,7 +166,6 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         break;
 
       case 'ndvi':
-        // Vegetation index - greens
         const ndviVal = zone.ndvi ?? 0.3;
         if (ndviVal > 0.45) {
           fillColor = '#16a34a';
@@ -136,10 +181,9 @@ export const MapViewer: React.FC<MapViewerProps> = ({
 
       case 'sar_vv':
       case 'sar_vh':
-        // Radar backscatter - violet to deep navy
         const sarVal = activeLayer === 'sar_vv' ? (zone.vv_db ?? -14) : (zone.vh_db ?? -20);
         if (sarVal < -18.0) {
-          fillColor = '#4338ca'; // Smooth specular open water
+          fillColor = '#4338ca';
           strokeColor = '#818cf8';
         } else if (sarVal < -13.0) {
           fillColor = '#6366f1';
@@ -151,9 +195,8 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         break;
 
       case 'dem':
-        // Elevation / slope
         if (zone.slope_deg < 1.0) {
-          fillColor = '#dc2626'; // Flat basin depression (highest flood risk)
+          fillColor = '#dc2626';
           strokeColor = '#f87171';
         } else if (zone.slope_deg < 2.5) {
           fillColor = '#ea580c';
@@ -162,6 +205,13 @@ export const MapViewer: React.FC<MapViewerProps> = ({
           fillColor = '#10b981';
           strokeColor = '#34d399';
         }
+        break;
+
+      case 'realtime_radar':
+        // Transparent polygons with glowing dashed boundary when viewing radar
+        fillColor = zone.severity === 'Severe' ? '#ef4444' : '#06b6d4';
+        strokeColor = zone.severity === 'Severe' ? '#f87171' : '#38bdf8';
+        fillOpacity = 0.15;
         break;
 
       case 'rgb':
@@ -174,7 +224,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({
     return {
       fillColor,
       color: strokeColor,
-      weight: 2,
+      weight: activeLayer === 'realtime_radar' ? 1.5 : 2,
       opacity: 0.9,
       fillOpacity
     };
@@ -191,14 +241,25 @@ export const MapViewer: React.FC<MapViewerProps> = ({
       >
         <MapCenterController center={center} zoom={zoom} />
 
-        {/* Base Tile Layer */}
+        {/* 1. Base Tile Layer */}
         <TileLayer
           url={BASE_MAP_URLS[baseMap].url}
           attribution={BASE_MAP_URLS[baseMap].attribution}
           maxZoom={19}
         />
 
-        {/* Render Study Area Bounding Outline if available */}
+        {/* 2. Real-Time RainViewer Live Doppler Radar Layer */}
+        {activeLayer === 'realtime_radar' && currentRadarFrame && radarMeta?.host && (
+          <TileLayer
+            key={`radar_${currentRadarFrame.time}`}
+            url={`${radarMeta.host}${currentRadarFrame.path}/256/{z}/{x}/{y}/4/1_1.png`}
+            opacity={radarOpacity}
+            zIndex={100}
+            maxZoom={19}
+          />
+        )}
+
+        {/* 3. Study Area Bounding Outline */}
         {studyArea?.bounds_geojson?.coordinates && (
           <Polygon
             positions={studyArea.bounds_geojson.coordinates[0].map((coord: number[]) => [coord[1], coord[0]])}
@@ -211,7 +272,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({
           />
         )}
 
-        {/* Render Severity Polygons */}
+        {/* 4. Render Severity Zones */}
         {zones.map((zone) => {
           const latLngCoords: [number, number][] = zone.geojson_feature.geometry.coordinates[0].map(
             (coord: number[]) => [coord[1], coord[0]]
@@ -305,7 +366,129 @@ export const MapViewer: React.FC<MapViewerProps> = ({
             </Polygon>
           );
         })}
+
+        {/* 5. Live IoT Ultrasonic Sump Markers */}
+        {showIoTSensors && iotSensors.map((sensor) => {
+          const isDanger = sensor.currentDepthM >= sensor.dangerThresholdM;
+          const isWarning = sensor.currentDepthM >= sensor.warningThresholdM && !isDanger;
+          const markerColor = isDanger ? '#ef4444' : isWarning ? '#f59e0b' : '#06b6d4';
+
+          return (
+            <CircleMarker
+              key={sensor.id}
+              center={[sensor.lat, sensor.lng]}
+              radius={isDanger ? 12 : 9}
+              pathOptions={{
+                fillColor: markerColor,
+                color: isDanger ? '#fee2e2' : '#ffffff',
+                weight: 2.5,
+                fillOpacity: 0.9
+              }}
+            >
+              <Tooltip sticky direction="top" className="custom-leaflet-tooltip">
+                <div className="text-xs font-sans">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-100">
+                    <Gauge className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{sensor.name}</span>
+                  </div>
+                  <div className="text-[11px] font-mono mt-0.5 text-cyan-300">
+                    Depth: {(sensor.currentDepthM * 100).toFixed(0)}cm • Flow: {sensor.flowRateLps} L/s
+                  </div>
+                </div>
+              </Tooltip>
+
+              <Popup className="custom-leaflet-popup">
+                <div className="p-1 space-y-2.5 text-xs font-sans min-w-[260px]">
+                  {/* Sump Node Header */}
+                  <div className="flex items-start justify-between gap-2 border-b border-slate-700 pb-1.5">
+                    <div>
+                      <span className="text-[9px] font-mono text-cyan-400 block">IOT TELEMETRY NODE</span>
+                      <h4 className="font-bold text-slate-100 text-sm">{sensor.name}</h4>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                      isDanger ? 'bg-red-500 text-white animate-pulse' : isWarning ? 'bg-amber-500 text-white' : 'bg-cyan-600 text-white'
+                    }`}>
+                      {isDanger ? 'DANGER' : isWarning ? 'WARNING' : 'NORMAL'}
+                    </span>
+                  </div>
+
+                  {/* Depth & Discharge Readout */}
+                  <div className="grid grid-cols-2 gap-2 bg-slate-900 p-2 rounded-xl border border-slate-800 text-[11px] font-mono">
+                    <div>
+                      <span className="text-slate-400 text-[10px] font-sans">Inundation Level</span>
+                      <p className={`text-base font-black ${isDanger ? 'text-red-400' : 'text-cyan-300'}`}>
+                        {(sensor.currentDepthM * 100).toFixed(0)} cm
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px] font-sans">Sump Inflow</span>
+                      <p className="text-base font-black text-sky-300">{sensor.flowRateLps} L/s</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px] font-sans">Siltation</span>
+                      <p className="font-semibold text-amber-300">{sensor.siltationPct}% Silt</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px] font-sans">4G Signal</span>
+                      <p className="font-semibold text-emerald-300">{sensor.signalDbm} dBm</p>
+                    </div>
+                  </div>
+
+                  {/* Dewatering Pump Remote Actuator */}
+                  <div className="p-2 rounded-xl bg-slate-800/80 border border-slate-700 space-y-1.5">
+                    <div className="flex justify-between items-center text-[10px]">
+                      <span className="font-bold text-slate-300 flex items-center gap-1">
+                        <Power className="w-3 h-3 text-cyan-400" />
+                        Pump Status:
+                      </span>
+                      <span className="font-mono font-bold text-emerald-400">
+                        {sensor.pumpStatus.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+
+                    {onTriggerPumpCommand && (
+                      <div className="grid grid-cols-3 gap-1 pt-1">
+                        <button
+                          onClick={() => onTriggerPumpCommand(sensor, 'AUTO')}
+                          className={`py-1 rounded text-[9px] font-bold ${sensor.pumpStatus.startsWith('AUTO') ? 'bg-cyan-500 text-white' : 'bg-slate-700 text-slate-300'}`}
+                        >
+                          AUTO
+                        </button>
+                        <button
+                          onClick={() => onTriggerPumpCommand(sensor, 'MANUAL_ON')}
+                          className={`py-1 rounded text-[9px] font-bold ${sensor.pumpStatus === 'MANUAL_ON' ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300'}`}
+                        >
+                          FORCE ON
+                        </button>
+                        <button
+                          onClick={() => onTriggerPumpCommand(sensor, 'EMERGENCY_BOOST')}
+                          className={`py-1 rounded text-[9px] font-bold ${sensor.pumpStatus === 'EMERGENCY_BOOST' ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-700 text-red-300'}`}
+                        >
+                          BOOST
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Popup>
+            </CircleMarker>
+          );
+        })}
+
       </MapContainer>
+
+      {/* 6. Floating Radar Playback Bar when Doppler layer is active */}
+      {activeLayer === 'realtime_radar' && (
+        <RadarPlaybackBar
+          radarMeta={radarMeta}
+          currentFrameIndex={radarFrameIndex}
+          setCurrentFrameIndex={setRadarFrameIndex}
+          isPlaying={isRadarPlaying}
+          setIsPlaying={setIsRadarPlaying}
+          radarOpacity={radarOpacity}
+          setRadarOpacity={setRadarOpacity}
+        />
+      )}
 
       {/* Before / After Split Screen Divider Line Visualizer */}
       {showComparison && (
@@ -320,13 +503,22 @@ export const MapViewer: React.FC<MapViewerProps> = ({
         </div>
       )}
 
-      {/* Floating Active Layer Indicator Overlay */}
-      <div className="absolute top-4 left-4 z-20 pointer-events-none">
+      {/* Floating Active Layer & Nowcast Indicator Overlay */}
+      <div className="absolute top-4 left-4 z-20 flex flex-col gap-2 pointer-events-none">
         <div className="glass-panel px-3 py-1.5 rounded-lg border border-slate-700/80 text-xs flex items-center gap-2 shadow-lg">
           <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></div>
           <span className="text-slate-400">Active Sensor Overlay:</span>
-          <span className="font-semibold text-cyan-300 uppercase tracking-wide">{activeLayer.replace('_', ' ')}</span>
+          <span className="font-semibold text-cyan-300 uppercase tracking-wide">
+            {activeLayer === 'realtime_radar' ? '🔴 Live Doppler Precipitation' : activeLayer.replace('_', ' ')}
+          </span>
         </div>
+
+        {isNowcastActive && (
+          <div className="glass-panel px-3 py-1.5 rounded-lg border border-red-500/50 bg-red-950/40 text-xs flex items-center gap-2 shadow-lg text-red-300 animate-fadeIn">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+            <span className="font-bold">Real-Time Open-Meteo Nowcast Active</span>
+          </div>
+        )}
       </div>
     </div>
   );

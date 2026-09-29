@@ -85,6 +85,7 @@ class IrrigationRequest(BaseModel):
     field_area_ha: float = 2.0
 
 @app.get("/")
+@app.get("/health")
 def health_check():
     return {
         "service": "AI Waterlogging & Drainage Advisory ML Microservice",

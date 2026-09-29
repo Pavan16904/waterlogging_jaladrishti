@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from './services/api';
-import { StudyArea, SeverityZone, DrainageAdvisory, AnalysisRun } from './types';
+import { StudyArea, SeverityZone, DrainageAdvisory, AnalysisRun, IoTSensor, RadarMeta, LiveAlert } from './types';
 import { Header, MainTabType } from './components/Header';
 import { FloodMapPage } from './components/FloodMapPage';
 import { WeatherPage } from './components/WeatherPage';
@@ -8,6 +8,8 @@ import { CropWaterPage } from './components/CropWaterPage';
 import { DrainageActionsPage } from './components/DrainageActionsPage';
 import { ModelEvaluationModal } from './components/ModelEvaluationModal';
 import { ExportReportModal } from './components/ExportReportModal';
+import { LiveIoTSensorsDrawer } from './components/LiveIoTSensorsDrawer';
+import { EmergencyOpsModal } from './components/EmergencyOpsModal';
 import { AnimatePresence, motion } from 'framer-motion';
 
 export function App() {
@@ -38,9 +40,12 @@ export function App() {
   const [selectedAreaId, setSelectedAreaId] = useState<string>('bengaluru_urban');
   const [currentArea, setCurrentArea] = useState<StudyArea | null>(null);
 
-  // Analysis Parameters
-  const [preEventDate, setPreEventDate] = useState<string>('2026-06-10');
-  const [postEventDate, setPostEventDate] = useState<string>('2026-08-25');
+  // Analysis Parameters — always start with today as post-event, 7 days ago as pre-event
+  const getTodayStr = () => new Date().toISOString().split('T')[0];
+  const getPreEventStr = () => new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+
+  const [preEventDate, setPreEventDate] = useState<string>(getPreEventStr);
+  const [postEventDate, setPostEventDate] = useState<string>(getTodayStr);
   const [rainfallMm, setRainfallMm] = useState<number>(75);
 
   // Results State
@@ -49,24 +54,60 @@ export function App() {
   const [advisories, setAdvisories] = useState<DrainageAdvisory[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
 
+  // Live Rainfall Data (from Open-Meteo real-time)
+  const [liveRainfallData, setLiveRainfallData] = useState<any>(null);
+
+  // Real-Time Telemetry State
+  const [radarMeta, setRadarMeta] = useState<RadarMeta | null>(null);
+  const [iotSensors, setIoTSensors] = useState<IoTSensor[]>([]);
+  const [liveAlerts, setLiveAlerts] = useState<LiveAlert[]>([]);
+
   // Cross-Page Selected District
   const [selectedDistrict, setSelectedDistrict] = useState<string>('Bengaluru Urban');
 
-  // Modals
+  // Modals & Drawers
   const [isModelOpen, setIsModelOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
+  const [isIoTDrawerOpen, setIsIoTDrawerOpen] = useState<boolean>(false);
+  const [isEmergencyOpsOpen, setIsEmergencyOpsOpen] = useState<boolean>(false);
 
-  // Initial Load: Fetch Study Areas
+  // Initial Load: Fetch Study Areas, Radar metadata, IoT Telemetry & Alerts
   useEffect(() => {
     loadStudyAreas();
+    loadRadarMeta();
+    loadRealtimeTelemetry();
+
+    // Refresh dates to today on mount (handles overnight sessions staying open)
+    setPostEventDate(getTodayStr());
+    setPreEventDate(getPreEventStr());
+
+    // Set up continuous real-time telemetry polling interval (8s)
+    const telemetryInterval = setInterval(() => {
+      loadRealtimeTelemetry();
+      // Also refresh dates every 8s so they always reflect current day
+      setPostEventDate(getTodayStr());
+    }, 8000);
+
+    // Refresh radar frames every 5 minutes
+    const radarInterval = setInterval(() => {
+      loadRadarMeta();
+    }, 5 * 60 * 1000);
+
+    return () => {
+      clearInterval(telemetryInterval);
+      clearInterval(radarInterval);
+    };
   }, []);
 
-  // When selectedAreaId changes, fetch latest analysis
+  // When selectedAreaId changes, fetch latest analysis AND live rainfall
   useEffect(() => {
     if (selectedAreaId) {
       const area = studyAreas.find((a) => a.id === selectedAreaId) || null;
       setCurrentArea(area);
       loadLatestAnalysis(selectedAreaId);
+      if (area) {
+        fetchLiveRainfall(area.center_lat, area.center_lng, area.name);
+      }
     }
   }, [selectedAreaId, studyAreas]);
 
@@ -91,12 +132,58 @@ export function App() {
         setRun(data.run);
         setZones(data.zones || []);
         setAdvisories(data.advisories || []);
-        if (data.run?.rainfall_mm) {
+        // Don't override rainfallMm from DB if live data is already loaded
+        if (data.run?.rainfall_mm && !liveRainfallData) {
           setRainfallMm(data.run.rainfall_mm);
         }
       }
     } catch (err) {
       console.error('Failed to load latest analysis:', err);
+    }
+  };
+
+  // Fetch live today's rainfall from Open-Meteo for the selected area
+  const fetchLiveRainfall = async (lat: number, lng: number, name: string) => {
+    try {
+      const data = await api.getTodayRainfall(lat, lng, name);
+      if (data && data.success) {
+        setLiveRainfallData(data);
+        // Auto-update rainfall slider to today's actual measurement
+        if (data.todayRainfallMm > 0) {
+          setRainfallMm(Math.round(data.todayRainfallMm * 10) / 10);
+        }
+      }
+    } catch (err) {
+      console.warn('Live rainfall fetch warning:', err);
+    }
+  };
+
+  const loadRadarMeta = async () => {
+    try {
+      const data = await api.getRadarMeta();
+      if (data && data.success) {
+        setRadarMeta(data);
+      }
+    } catch (err) {
+      console.warn('Radar metadata fetch warning:', err);
+    }
+  };
+
+  const loadRealtimeTelemetry = async () => {
+    try {
+      const [iotData, alertsData] = await Promise.all([
+        api.getIoTSensors(),
+        api.getLiveAlerts()
+      ]);
+
+      if (iotData && iotData.sensors) {
+        setIoTSensors(iotData.sensors);
+      }
+      if (alertsData && alertsData.alerts) {
+        setLiveAlerts(alertsData.alerts);
+      }
+    } catch (err) {
+      console.warn('Real-time telemetry poll warning:', err);
     }
   };
 
@@ -123,7 +210,7 @@ export function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#080c14] bg-ambient-mesh text-slate-900 dark:text-slate-100 selection:bg-cyan-500 selection:text-white transition-colors duration-300">
-      {/* Top Universal Modern Navigation Header */}
+      {/* Top Universal Modern Navigation Header with Live Ticker */}
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -131,6 +218,9 @@ export function App() {
         setTheme={setTheme}
         onOpenExportModal={() => setIsExportOpen(true)}
         onOpenModelModal={() => setIsModelOpen(true)}
+        onOpenEmergencyOps={() => setIsEmergencyOpsOpen(true)}
+        onOpenIoTSensors={() => setIsIoTDrawerOpen(true)}
+        alerts={liveAlerts}
       />
 
       {/* Main Page Body with Animated Transitions */}
@@ -161,6 +251,11 @@ export function App() {
                 rainfallMm={rainfallMm}
                 setRainfallMm={setRainfallMm}
                 onNavigateToDrainage={() => setActiveTab('drainage')}
+                radarMeta={radarMeta}
+                iotSensors={iotSensors}
+                alerts={liveAlerts}
+                onRefreshTelemetry={loadRealtimeTelemetry}
+                liveRainfallData={liveRainfallData}
               />
             </motion.div>
           )}
@@ -218,8 +313,8 @@ export function App() {
         </AnimatePresence>
       </main>
 
-      {/* Luxury Platform Telemetry & Data Provenance Footer */}
-      <footer className="glass-nav border-t border-slate-200 dark:border-slate-800/80 px-4 md:px-8 py-4 text-xs text-slate-500 dark:text-slate-400 mt-auto">
+      {/* Luxury Platform Telemetry & Real-Time Data Provenance Footer */}
+      <footer className="glass-nav border-t border-slate-200 dark:border-slate-800/80 px-4 md:px-8 py-3.5 text-xs text-slate-500 dark:text-slate-400 mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           {/* Telemetry Status Badges */}
           <div className="flex flex-wrap items-center gap-3">
@@ -228,26 +323,39 @@ export function App() {
               Sentinel-1 SAR Active
             </span>
 
+            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-semibold text-[11px] border border-cyan-500/20">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+              RainViewer Doppler Radar Live
+            </span>
+
             <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 font-semibold text-[11px] border border-sky-500/20">
               <span className="w-2 h-2 rounded-full bg-sky-500"></span>
-              31 Districts Synced (Open-Meteo)
+              {iotSensors.length} IoT Flood Sump Nodes
             </span>
 
             <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 font-semibold text-[11px] border border-purple-500/20">
               <span className="w-2 h-2 rounded-full bg-purple-500"></span>
               AI Ensemble (99.95%)
             </span>
-
-            <span className="text-[11px] text-slate-400 hidden lg:inline">
-              FAO-56 Dual Kc &bull; NASA SRTM 30m DEM
-            </span>
           </div>
 
           {/* Platform Identity & Navigation */}
           <div className="flex items-center gap-4 text-[11px]">
             <span className="font-bold text-slate-700 dark:text-slate-300">
-              JalaDrishti AI &mdash; Karnataka Flood Intelligence Platform
+              JalaDrishti AI &mdash; Real-Time Karnataka Flood Intelligence
             </span>
+            <button
+              onClick={() => setIsIoTDrawerOpen(true)}
+              className="text-sky-500 hover:underline font-bold"
+            >
+              IoT Gauges
+            </button>
+            <button
+              onClick={() => setIsEmergencyOpsOpen(true)}
+              className="text-rose-500 hover:underline font-bold"
+            >
+              Emergency EOC
+            </button>
             <button
               onClick={() => setIsModelOpen(true)}
               className="text-cyan-600 dark:text-cyan-400 hover:underline font-semibold"
@@ -263,6 +371,22 @@ export function App() {
           </div>
         </div>
       </footer>
+
+      {/* Global Live IoT Sensors Telemetry Drawer */}
+      <LiveIoTSensorsDrawer
+        isOpen={isIoTDrawerOpen}
+        onClose={() => setIsIoTDrawerOpen(false)}
+        sensors={iotSensors}
+        onRefresh={loadRealtimeTelemetry}
+      />
+
+      {/* Global Emergency Operations Center (EOC) Modal */}
+      <EmergencyOpsModal
+        isOpen={isEmergencyOpsOpen}
+        onClose={() => setIsEmergencyOpsOpen(false)}
+        alerts={liveAlerts}
+        sensors={iotSensors}
+      />
 
       {/* Official Engineering & PDF Export Modal */}
       <ExportReportModal

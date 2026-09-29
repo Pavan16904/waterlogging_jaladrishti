@@ -33,8 +33,8 @@ async function startServer() {
     await initializeDatabase();
     await seedDatabase();
     
-    app.listen(PORT, () => {
-      console.log(`[+] Node.js Backend Gateway running on http://localhost:${PORT}`);
+    app.listen(Number(PORT), '0.0.0.0', () => {
+      console.log(`[+] Node.js Backend Gateway running on http://127.0.0.1:${PORT}`);
     });
   } catch (err: any) {
     console.error('[-] Failed to start server:', err.message);

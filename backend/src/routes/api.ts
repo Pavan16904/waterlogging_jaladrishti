@@ -6,6 +6,14 @@ import { calculateIrrigation, getCropCatalog, getKarnatakaDistricts, getPastIrri
 import { getModelMetrics } from '../controllers/metricsController.js';
 import { exportCsvReport, getReportSummaryJson } from '../controllers/reportController.js';
 import { getDistrictForecast, getAllKarnatakaDistrictsWeather } from '../controllers/weatherController.js';
+import { 
+  getRadarMeta, 
+  getIoTSensors, 
+  updatePumpActuator, 
+  getLiveAlerts, 
+  getRealtimeNowcast,
+  getTodayRainfall
+} from '../controllers/realtimeController.js';
 
 const router = Router();
 
@@ -37,5 +45,13 @@ router.get('/reports/summary/:runId', getReportSummaryJson);
 // Real-Time Open-Meteo Weather Observatory
 router.get('/weather/forecast/:district', getDistrictForecast);
 router.get('/weather/summary', getAllKarnatakaDistrictsWeather);
+
+// Real-Time Radar, IoT Telemetry, Remote Actuators & Dynamic Nowcast
+router.get('/realtime/radar-meta', getRadarMeta);
+router.get('/realtime/iot-sensors', getIoTSensors);
+router.post('/realtime/pump-actuator', updatePumpActuator);
+router.get('/realtime/live-alerts', getLiveAlerts);
+router.get('/realtime/nowcast/:districtId', getRealtimeNowcast);
+router.get('/realtime/today-rainfall', getTodayRainfall);
 
 export default router;

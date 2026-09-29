@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { query } from '../db/index.js';
 import axios from 'axios';
 
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://127.0.0.1:8000';
 
 export async function getLatestAnalysis(req: Request, res: Response) {
   try {
@@ -145,12 +145,16 @@ export async function runNewAnalysis(req: Request, res: Response) {
       ];
     }
 
+    // Default dates: today as post-event, 7 days ago as pre-event
+    const todayDefault = new Date().toISOString().split('T')[0];
+    const preDefault = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+
     // Call Python FastAPI ML Service
     const mlResponse = await axios.post(`${ML_SERVICE_URL}/api/ml/analyze-scene`, {
       study_area_id: studyAreaId,
       study_area_name: studyArea.name,
-      pre_event_date: preEventDate || '2026-06-15',
-      post_event_date: postEventDate || '2026-08-28',
+      pre_event_date: preEventDate || preDefault,
+      post_event_date: postEventDate || todayDefault,
       model_type: modelType || 'random_forest',
       rainfall_override_mm: rainfallMm ? parseFloat(rainfallMm) : 65.0,
       zones: zonesToAnalyze
@@ -159,7 +163,10 @@ export async function runNewAnalysis(req: Request, res: Response) {
     const mlData = mlResponse.data;
     const newRunId = `run_${Date.now()}`;
 
-    // Store in PostgreSQL
+    const todayInsert = new Date().toISOString().split('T')[0];
+    const preInsert = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+
+    // Store in database
     await query(
       `INSERT INTO analysis_runs (id, study_area_id, model_type, pre_event_date, post_event_date, rainfall_mm, total_area_km2, waterlogged_area_km2, waterlogged_percentage, severe_count, moderate_count, low_count)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
@@ -167,8 +174,8 @@ export async function runNewAnalysis(req: Request, res: Response) {
         newRunId,
         studyAreaId,
         modelType || 'random_forest',
-        preEventDate || '2026-06-15',
-        postEventDate || '2026-08-28',
+        preEventDate || preInsert,
+        postEventDate || todayInsert,
         rainfallMm ? parseFloat(rainfallMm) : 65.0,
         mlData.total_area_km2,
         mlData.total_waterlogged_km2,
