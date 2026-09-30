@@ -213,14 +213,7 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
     }
   }, [selectedAreaId]);
 
-  // Auto-focus the #1 top critical zone whenever zones load or change
-  useEffect(() => {
-    if (zones && zones.length > 0) {
-      // Find top Severe zone or first zone
-      const topCritical = zones.find(z => z.severity === 'Severe') || zones[0];
-      setSelectedZone(topCritical);
-    }
-  }, [selectedAreaId, zones.length]);
+
 
   const loadNowcast = async (areaId: string) => {
     try {
