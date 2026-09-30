@@ -17,6 +17,10 @@ timeout /t 3 /nobreak >nul
 echo [*] Starting React Leaflet Frontend Dashboard on port 3000...
 start "Frontend (Vite React)" cmd /k "cd frontend && npm run dev"
 
+timeout /t 4 /nobreak >nul
+echo [*] Auto-opening browser to http://localhost:3000...
+start http://localhost:3000
+
 echo.
 echo [+] All 3 services launched successfully!
 echo  - Frontend: http://localhost:3000
