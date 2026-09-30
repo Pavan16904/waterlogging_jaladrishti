@@ -12,7 +12,6 @@ import {
   FileText, 
   Sparkles, 
   ExternalLink,
-  Languages,
   Droplets,
   LifeBuoy,
   Home,
@@ -21,6 +20,7 @@ import {
   Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useLanguage } from '../context/LanguageContext';
 
 interface CitizenLifelineModalProps {
   isOpen: boolean;
@@ -35,7 +35,7 @@ export const CitizenLifelineModal: React.FC<CitizenLifelineModalProps> = ({
   onClose,
   districtName = 'Bengaluru Urban'
 }) => {
-  const [lang, setLang] = useState<LangType>('en');
+  const { lang } = useLanguage();
   const [activeSubTab, setActiveSubTab] = useState<'sos' | 'shelters' | 'health' | 'farmer'>('sos');
 
   // SOS Form state
@@ -265,35 +265,7 @@ export const CitizenLifelineModal: React.FC<CitizenLifelineModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Language Switcher */}
-            <div className="flex items-center bg-slate-800/90 rounded-xl p-1 border border-slate-700">
-              <Languages className="w-4 h-4 text-cyan-400 ml-1.5 mr-1" />
-              <button
-                onClick={() => setLang('en')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                  lang === 'en' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                English
-              </button>
-              <button
-                onClick={() => setLang('kn')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                  lang === 'kn' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                ಕನ್ನಡ
-              </button>
-              <button
-                onClick={() => setLang('hi')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                  lang === 'hi' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                हिन्दी
-              </button>
-            </div>
-
+            {/* Language is now controlled globally from the Header */}
             <button
               onClick={onClose}
               className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"

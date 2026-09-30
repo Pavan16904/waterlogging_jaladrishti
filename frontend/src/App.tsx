@@ -325,6 +325,9 @@ export function App() {
                 mapLastUpdated={mapLastUpdated}
                 isAutoRefreshing={isAutoRefreshing}
                 onManualMapRefresh={handleManualMapRefresh}
+                onOpenEmergencyOps={() => setIsEmergencyOpsOpen(true)}
+                onOpenIoTSensors={() => setIsIoTDrawerOpen(true)}
+                onOpenCitizenLifeline={() => setIsCitizenLifelineOpen(true)}
               />
             </motion.div>
           )}

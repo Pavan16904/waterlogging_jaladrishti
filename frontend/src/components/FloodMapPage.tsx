@@ -2,10 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { MapContainer, TileLayer, Polygon, Popup, useMap, Tooltip, CircleMarker } from 'react-leaflet';
 import { StudyArea, SeverityZone, DrainageAdvisory, AnalysisRun, IoTSensor, RadarMeta, LiveAlert, RealtimeNowcast } from '../types';
 import { RadarPlaybackBar } from './RadarPlaybackBar';
-import { LiveIoTSensorsDrawer } from './LiveIoTSensorsDrawer';
-import { EmergencyOpsModal } from './EmergencyOpsModal';
 import { PrecautionProtocolModal } from './PrecautionProtocolModal';
-import { CitizenLifelineModal } from './CitizenLifelineModal';
 import { api } from '../services/api';
 import { 
   MapPin, 
@@ -66,10 +63,14 @@ interface FloodMapPageProps {
   iotSensors?: IoTSensor[];
   alerts?: LiveAlert[];
   onRefreshTelemetry?: () => void;
-  liveRainfallData?: any; // Live today's rainfall from Open-Meteo
-  mapLastUpdated?: Date | null;  // Timestamp of last live map refresh
-  isAutoRefreshing?: boolean;    // Whether a background refresh is in progress
-  onManualMapRefresh?: () => void; // Callback to trigger manual map refresh
+  liveRainfallData?: any;
+  mapLastUpdated?: Date | null;
+  isAutoRefreshing?: boolean;
+  onManualMapRefresh?: () => void;
+  // Global modal openers (from App.tsx) — avoids duplicate modal instances
+  onOpenEmergencyOps?: () => void;
+  onOpenIoTSensors?: () => void;
+  onOpenCitizenLifeline?: () => void;
 }
 
 // Map center adjuster on study area change or zone select
@@ -148,6 +149,9 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
   mapLastUpdated,
   isAutoRefreshing = false,
   onManualMapRefresh,
+  onOpenEmergencyOps,
+  onOpenIoTSensors,
+  onOpenCitizenLifeline,
 }) => {
   // Live clock — ticks every second
   const [liveTime, setLiveTime] = useState<string>(() =>
@@ -164,12 +168,10 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
   const [zoneFilter, setZoneFilter] = useState<string>('All');
   const [searchZoneQuery, setSearchZoneQuery] = useState<string>('');
 
-  // Real-Time Toggles & Modals
+  // Real-Time Toggles
   const [isDopplerRadarActive, setIsDopplerRadarActive] = useState<boolean>(false);
   const [showIoTSensors, setShowIoTSensors] = useState<boolean>(true);
   const [isNowcastActive, setIsNowcastActive] = useState<boolean>(false);
-  const [isIoTDrawerOpen, setIsIoTDrawerOpen] = useState<boolean>(false);
-  const [isEmergencyOpsOpen, setIsEmergencyOpsOpen] = useState<boolean>(false);
 
   // Doppler Radar Playback State
   const [radarFrameIndex, setRadarFrameIndex] = useState<number>(0);
@@ -182,7 +184,6 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
   // Early Warning & Advance Waterlogging Prediction State
   const [earlyWarningData, setEarlyWarningData] = useState<any>(null);
   const [isPrecautionModalOpen, setIsPrecautionModalOpen] = useState<boolean>(false);
-  const [isCitizenLifelineOpen, setIsCitizenLifelineOpen] = useState<boolean>(false);
 
   // Map Polygon Layer Visibility Toggles (Severe Red, Moderate Yellow, Low Green)
   const [visibleSeverities, setVisibleSeverities] = useState<{ Severe: boolean; Moderate: boolean; Low: boolean }>({
@@ -362,7 +363,7 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             {/* Citizen Lifeline & Community SOS Button */}
             <button
-              onClick={() => setIsCitizenLifelineOpen(true)}
+              onClick={() => onOpenCitizenLifeline ? onOpenCitizenLifeline() : undefined}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 hover:from-amber-500/30 hover:to-rose-500/30 text-amber-300 font-black border border-amber-500/40 transition-all shadow-[0_0_15px_rgba(245,158,11,0.25)] hover:scale-105"
               title="Citizen Lifeline: Crowdsourced Waterlogging SOS, Relief Shelters & Farmer Support"
             >
@@ -382,7 +383,7 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
 
             {/* IoT Telemetry Drawer Button */}
             <button
-              onClick={() => setIsIoTDrawerOpen(true)}
+              onClick={() => onOpenIoTSensors ? onOpenIoTSensors() : undefined}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 font-bold border border-sky-500/30 transition-all"
             >
               <Activity className="w-4 h-4 text-sky-400" />
@@ -391,7 +392,7 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
 
             {/* Emergency Operations Center (EOC) Button */}
             <button
-              onClick={() => setIsEmergencyOpsOpen(true)}
+              onClick={() => onOpenEmergencyOps ? onOpenEmergencyOps() : undefined}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold border border-rose-500/40 transition-all shadow-[0_0_12px_rgba(244,63,94,0.25)]"
             >
               <ShieldAlert className="w-4 h-4 text-rose-400 animate-pulse" />
@@ -1372,36 +1373,11 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
         </div>
       </div>
 
-      {/* Live IoT Sensors Telemetry Drawer */}
-      <LiveIoTSensorsDrawer
-        isOpen={isIoTDrawerOpen}
-        onClose={() => setIsIoTDrawerOpen(false)}
-        sensors={iotSensors}
-        onRefresh={() => {
-          if (onRefreshTelemetry) onRefreshTelemetry();
-        }}
-      />
-
-      {/* Emergency Operations Center (EOC) Modal */}
-      <EmergencyOpsModal
-        isOpen={isEmergencyOpsOpen}
-        onClose={() => setIsEmergencyOpsOpen(false)}
-        alerts={alerts}
-        sensors={iotSensors}
-      />
-
       {/* Advance Pre-Disaster Precaution Protocol Matrix Modal */}
       <PrecautionProtocolModal
         isOpen={isPrecautionModalOpen}
         onClose={() => setIsPrecautionModalOpen(false)}
         earlyWarningData={earlyWarningData}
-        districtName={currentArea?.name || 'Karnataka'}
-      />
-
-      {/* Citizen Lifeline & Community SOS Modal */}
-      <CitizenLifelineModal
-        isOpen={isCitizenLifelineOpen}
-        onClose={() => setIsCitizenLifelineOpen(false)}
         districtName={currentArea?.name || 'Karnataka'}
       />
     </div>
