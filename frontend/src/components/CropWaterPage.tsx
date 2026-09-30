@@ -22,7 +22,13 @@ import {
   Timer,
   Activity,
   ArrowRight,
-  Info
+  Info,
+  Printer,
+  Download,
+  Languages,
+  Zap,
+  CloudRain,
+  TrendingUp
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -52,21 +58,22 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 const POPULAR_PRESETS = [
-  { name: 'Finger Millet (Ragi)', icon: '🌾', category: 'Millets' },
-  { name: 'Tomato', icon: '🍅', category: 'Vegetables' },
-  { name: 'Paddy (Rice)', icon: '🌾', category: 'Cereals' },
-  { name: 'Maize (Corn)', icon: '🌽', category: 'Cereals' },
-  { name: 'Groundnut (Peanut)', icon: '🌱', category: 'Oilseeds' },
-  { name: 'Sugarcane', icon: '🎋', category: 'Commercial' },
-  { name: 'Onion', icon: '🧅', category: 'Vegetables' },
-  { name: 'Coffee (Robusta)', icon: '☕', category: 'Spices' },
-  { name: 'Mango', icon: '🥭', category: 'Fruits' },
-  { name: 'Chilli (Byadgi)', icon: '🌶️', category: 'Spices' }
+  { name: 'Finger Millet (Ragi)', kn: 'ರಾಗಿ (Ragi)', icon: '🌾', category: 'Millets' },
+  { name: 'Tomato', kn: 'ಟೊಮೇಟೊ (Tomato)', icon: '🍅', category: 'Vegetables' },
+  { name: 'Paddy (Rice)', kn: 'ಭತ್ತ (Paddy)', icon: '🌾', category: 'Cereals' },
+  { name: 'Maize (Corn)', kn: 'ಮೆಕ್ಕೆಜೋಳ (Maize)', icon: '🌽', category: 'Cereals' },
+  { name: 'Groundnut (Peanut)', kn: 'ಕಡಲೆಕಾಯಿ / ಶೇಂಗಾ', icon: '🌱', category: 'Oilseeds' },
+  { name: 'Sugarcane', kn: 'ಕಬ್ಬು (Sugarcane)', icon: '🎋', category: 'Commercial' },
+  { name: 'Onion', kn: 'ಈರುಳ್ಳಿ (Onion)', icon: '🧅', category: 'Vegetables' },
+  { name: 'Coffee (Robusta)', kn: 'ಕಾಫಿ (Coffee)', icon: '☕', category: 'Spices' },
+  { name: 'Mango', kn: 'ಮಾವಿನ ಹಣ್ಣು (Mango)', icon: '🥭', category: 'Fruits' },
+  { name: 'Chilli (Byadgi)', kn: 'ಬ್ಯಾಡಗಿ ಮೆಣಸಿನಕಾಯಿ', icon: '🌶️', category: 'Spices' }
 ];
 
 export const CropWaterPage: React.FC<CropWaterPageProps> = ({
   initialDistrict = 'Bengaluru Urban'
 }) => {
+  const [lang, setLang] = useState<'en' | 'kn'>('en');
   const [crops, setCrops] = useState<string[]>([]);
   const [categories, setCategories] = useState<Record<string, string[]>>({});
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -171,6 +178,19 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
   const dripPumpHours = (totalWaterLitres / 40000).toFixed(1); // 7.5HP ~ 40,000 L/hr
   const sprinklerHours = ((result?.recommended_gross_mm || 0) / 8).toFixed(1); // 8 mm/hr sprinkler precipitation rate
 
+  // Power & cost savings when avoiding over-irrigation
+  const powerSavedKwh = Math.round((Number(dripPumpHours) || 0) * 5.5);
+  const moneySavedInr = Math.round(powerSavedKwh * 7.5);
+
+  // Check 7-day upcoming rainfall sum
+  const upcomingRainfallMm = useMemo(() => {
+    return result?.forecast_7day?.reduce((acc: number, f: any) => acc + (f.rainfall_mm || 0), 0) || 0;
+  }, [result]);
+
+  const handlePrintPrescription = () => {
+    window.print();
+  };
+
   // Determine active growth stage step (1 to 4)
   const growthStageStep = useMemo(() => {
     const stageName = result?.growth_stage?.toLowerCase() || '';
@@ -194,41 +214,95 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
             <span className="text-xs text-slate-400 font-semibold hidden sm:inline">&bull; 100+ Karnataka Crops</span>
           </div>
           <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 dark:text-white mt-2">
-            Smart Crop Water & Irrigation Advisor
+            {lang === 'kn' ? 'ಸ್ಮಾರ್ಟ್ ಬೆಳೆ ನೀರು & ನೀರಾವರಿ ಸಲಹೆಗಾರ' : 'Smart Crop Water & Irrigation Advisor'}
           </h2>
           <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Dynamic root-zone water budgeting for Karnataka agriculture. Prevent root suffocation during flood events and eliminate drought stress.
+            {lang === 'kn'
+              ? 'ಕರ್ನಾಟಕದ ಕೃಷಿಗಾಗಿ ನಿಖರ ಬೇರು-ವಲಯ ನೀರಾವರಿ ವೇಳಾಪಟ್ಟಿ. ಅತಿಯಾದ ನೀರಿನಿಂದ ಬೆಳೆ ಕೊಳೆಯುವುದನ್ನು ತಪ್ಪಿಸಿ.'
+              : 'Dynamic root-zone water budgeting for Karnataka agriculture. Prevent root suffocation during flood events and eliminate drought stress.'}
           </p>
         </div>
 
-        {/* Catalog Size Stats */}
-        <div className="flex items-center gap-3">
-          <div className="px-4 py-2.5 rounded-2xl glass-card text-center border border-slate-200 dark:border-slate-800">
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Catalog</span>
-            <span className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
-              {crops.length || 100}+ Crops
-            </span>
+        {/* Action Buttons & Language Switcher */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Language Toggle */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-2xl p-1 border border-slate-200 dark:border-slate-700">
+            <Languages className="w-4 h-4 text-emerald-500 ml-2 mr-1" />
+            <button
+              onClick={() => setLang('en')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+                lang === 'en' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-white'
+              }`}
+            >
+              English
+            </button>
+            <button
+              onClick={() => setLang('kn')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+                lang === 'kn' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-white'
+              }`}
+            >
+              ಕನ್ನಡ
+            </button>
           </div>
-          <div className="px-4 py-2.5 rounded-2xl glass-card text-center border border-slate-200 dark:border-slate-800">
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Soils</span>
-            <span className="text-lg font-black text-cyan-600 dark:text-cyan-400 font-mono">
-              12 Series
-            </span>
-          </div>
-          <div className="px-4 py-2.5 rounded-2xl glass-card text-center border border-slate-200 dark:border-slate-800">
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Districts</span>
-            <span className="text-lg font-black text-sky-600 dark:text-sky-400 font-mono">
-              31 All
-            </span>
+
+          {/* Print Prescription Card Button */}
+          <button
+            onClick={handlePrintPrescription}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white text-xs font-bold border border-slate-700 shadow-sm transition-all"
+            title="Print Official Farmer Irrigation Prescription Card"
+          >
+            <Printer className="w-4 h-4 text-emerald-400" />
+            <span className="hidden sm:inline">{lang === 'kn' ? 'ಪ್ರಿಸ್ಕ್ರಿಪ್ಷನ್ ಮುದ್ರಿಸಿ' : 'Print Prescription'}</span>
+          </button>
+
+          {/* Catalog Size Stats */}
+          <div className="hidden lg:flex items-center gap-2">
+            <div className="px-3.5 py-1.5 rounded-2xl glass-card text-center border border-slate-200 dark:border-slate-800">
+              <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-semibold">Crops</span>
+              <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                {crops.length || 100}+
+              </span>
+            </div>
+            <div className="px-3.5 py-1.5 rounded-2xl glass-card text-center border border-slate-200 dark:border-slate-800">
+              <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-semibold">Soils</span>
+              <span className="text-sm font-black text-cyan-600 dark:text-cyan-400 font-mono">
+                12
+              </span>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Upcoming Rain Delay Smart Weather Alert */}
+      {upcomingRainfallMm > 5 && (
+        <div className="p-4 rounded-3xl bg-cyan-950/40 border border-cyan-500/40 flex items-center justify-between gap-4 animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+              <CloudRain className="w-5 h-5 animate-bounce" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-cyan-300">
+                {lang === 'kn' ? 'ಮುಂದಿನ 7 ದಿನಗಳಲ್ಲಿ ಮಳೆಯಾಗುವ ಮುನ್ಸೂಚನೆ ಇದೆ!' : 'Rainfall Expected in Next 7 Days!'} ({upcomingRainfallMm.toFixed(1)} mm total)
+              </h4>
+              <p className="text-xs text-slate-300">
+                {lang === 'kn'
+                  ? 'ನೈಸರ್ಗಿಕ ಮಳೆಯಿಂದ ಭೂಮಿಯು ತೇವವಾಗಲಿದೆ. ಅನಗತ್ಯ ನೀರಾವರಿಯನ್ನು ಮುಂದೂಡಿ, ವಿದ್ಯುತ್ ಮತ್ತು ನೀರನ್ನು ಉಳಿಸಿ.'
+                  : 'Natural precipitation will recharge the root-zone. Consider delaying irrigation to prevent root anoxia and save farm pumping electricity.'}
+              </p>
+            </div>
+          </div>
+          <span className="hidden sm:inline-flex px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold">
+            +{upcomingRainfallMm.toFixed(1)} mm RAIN
+          </span>
+        </div>
+      )}
 
       {/* Popular 1-Click Crop Presets Bar */}
       <div className="space-y-2">
         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-          Quick Farmer Presets:
+          {lang === 'kn' ? 'ತ್ವರಿತ ಜನಪ್ರಿಯ ಬೆಳೆಗಳು:' : 'Quick Farmer Presets:'}
         </span>
         <div className="flex flex-wrap gap-2">
           {POPULAR_PRESETS.map((preset) => (
@@ -242,7 +316,7 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
               }`}
             >
               <span>{preset.icon}</span>
-              <span>{preset.name}</span>
+              <span>{lang === 'kn' ? preset.kn : preset.name}</span>
             </button>
           ))}
         </div>
@@ -527,17 +601,17 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
           </div>
 
           {/* Real Field Equipment & Actionable Farmer Units */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
             <div className="p-4 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 flex items-center gap-3.5">
               <div className="p-3 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400">
                 <Truck className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[11px] text-slate-400 block font-semibold">Tractor Tankers Needed</span>
+                <span className="text-[11px] text-slate-400 block font-semibold">{lang === 'kn' ? 'ಟ್ರಾಕ್ಟರ್ ಟ್ಯಾಂಕರ್‌ಗಳು' : 'Tractor Tankers Needed'}</span>
                 <span className="text-xl font-black text-slate-900 dark:text-white font-mono">
                   {result.recommended_gross_mm > 0 ? `${tractorTankers} Tankers` : '0 Tankers'}
                 </span>
-                <span className="text-[10px] text-slate-400 block">5,000-Litre standard farm trailer</span>
+                <span className="text-[10px] text-slate-400 block">5,000L standard farm trailer</span>
               </div>
             </div>
 
@@ -546,11 +620,11 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
                 <Timer className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[11px] text-slate-400 block font-semibold">Drip Pump Runtime</span>
+                <span className="text-[11px] text-slate-400 block font-semibold">{lang === 'kn' ? 'ಡ್ರಿಪ್ ಪಂಪ್ ಸಮಯ' : 'Drip Pump Runtime'}</span>
                 <span className="text-xl font-black text-cyan-600 dark:text-cyan-400 font-mono">
                   {result.recommended_gross_mm > 0 ? `${dripPumpHours} Hours` : '0 Hours'}
                 </span>
-                <span className="text-[10px] text-slate-400 block">At 7.5 HP (~40,000 L/hr) discharge</span>
+                <span className="text-[10px] text-slate-400 block">At 7.5 HP (~40,000 L/hr)</span>
               </div>
             </div>
 
@@ -559,11 +633,24 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[11px] text-slate-400 block font-semibold">Root Rot / Anoxia Risk</span>
+                <span className="text-[11px] text-slate-400 block font-semibold">{lang === 'kn' ? 'ಬೇರು ಕೊಳೆತ ಅಪಾಯ' : 'Root Rot / Anoxia Risk'}</span>
                 <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
                   Low / Safe
                 </span>
                 <span className="text-[10px] text-slate-400 block">Root zone well-oxygenated</span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 flex items-center gap-3.5">
+              <div className="p-3 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                <Zap className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[11px] text-slate-400 block font-semibold">{lang === 'kn' ? 'ವಿದ್ಯುತ್ ಉಳಿತಾಯ' : 'Energy Conservation'}</span>
+                <span className="text-xl font-black text-amber-500 font-mono">
+                  {powerSavedKwh > 0 ? `${powerSavedKwh} kWh` : '0 kWh'}
+                </span>
+                <span className="text-[10px] text-slate-400 block">Est. ~₹{moneySavedInr} electricity value</span>
               </div>
             </div>
           </div>
