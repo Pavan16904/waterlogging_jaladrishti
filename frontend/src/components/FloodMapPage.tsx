@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { MapContainer, TileLayer, Polygon, Popup, useMap, Tooltip, CircleMarker } from 'react-leaflet';
-import { StudyArea, SeverityZone, DrainageAdvisory, AnalysisRun, IoTSensor, RadarMeta, LiveAlert, RealtimeNowcast } from '../types';
+import { StudyArea, SeverityZone, DrainageAdvisory, AnalysisRun, IoTSensor, RadarMeta, LiveAlert } from '../types';
 import { RadarPlaybackBar } from './RadarPlaybackBar';
 import { PrecautionProtocolModal } from './PrecautionProtocolModal';
 import { api } from '../services/api';
@@ -27,19 +27,12 @@ import {
   Search,
   Filter,
   Eye,
-  Activity,
-  Zap,
-  Radio,
   Gauge,
   Power,
-  BatteryCharging,
-  Signal,
-  Flame,
   Clock,
   ShieldAlert,
-  Printer,
   Sparkles,
-  LifeBuoy
+  Printer
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -171,15 +164,11 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
   // Real-Time Toggles
   const [isDopplerRadarActive, setIsDopplerRadarActive] = useState<boolean>(false);
   const [showIoTSensors, setShowIoTSensors] = useState<boolean>(true);
-  const [isNowcastActive, setIsNowcastActive] = useState<boolean>(false);
 
   // Doppler Radar Playback State
   const [radarFrameIndex, setRadarFrameIndex] = useState<number>(0);
   const [isRadarPlaying, setIsRadarPlaying] = useState<boolean>(true);
   const [radarOpacity, setRadarOpacity] = useState<number>(0.75);
-
-  // Nowcast Telemetry State
-  const [nowcast, setNowcast] = useState<RealtimeNowcast | null>(null);
 
   // Early Warning & Advance Waterlogging Prediction State
   const [earlyWarningData, setEarlyWarningData] = useState<any>(null);
@@ -206,26 +195,12 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
     return () => clearInterval(timer);
   }, [isRadarPlaying, radarFrames.length, isDopplerRadarActive]);
 
-  // Load Real-Time Nowcast & Early Warning Forecast on Area change
+  // Load Early Warning Forecast on Area change
   useEffect(() => {
     if (selectedAreaId) {
-      loadNowcast(selectedAreaId);
       loadEarlyWarning(selectedAreaId);
     }
   }, [selectedAreaId]);
-
-
-
-  const loadNowcast = async (areaId: string) => {
-    try {
-      const data = await api.getRealtimeNowcast(areaId);
-      if (data && data.telemetry) {
-        setNowcast(data);
-      }
-    } catch (err) {
-      console.error('Failed to load real-time nowcast:', err);
-    }
-  };
 
   const loadEarlyWarning = async (areaId: string) => {
     try {
@@ -312,96 +287,7 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
     <div className="flex-1 w-full overflow-y-auto pb-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5 space-y-4">
         
-        {/* Real-Time Live Control Ribbon (Doppler Radar, IoT Sensors, Nowcast, Emergency Ops) */}
-        <div className="p-3.5 sm:p-4 rounded-3xl bg-gradient-to-r from-slate-900/95 via-cyan-950/40 to-slate-900/95 border border-cyan-500/30 shadow-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-white backdrop-blur-xl">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/20 text-cyan-300 font-extrabold uppercase tracking-wider text-[10px] border border-cyan-500/30">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-              Live Telemetry Stream
-            </span>
-
-            {/* Live Doppler Radar Toggle */}
-            <button
-              onClick={() => setIsDopplerRadarActive(!isDopplerRadarActive)}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold transition-all ${
-                isDopplerRadarActive
-                  ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/30'
-                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700'
-              }`}
-            >
-              <CloudRain className="w-4 h-4 text-cyan-400" />
-              <span>{isDopplerRadarActive ? 'Doppler Radar Active' : 'Live Doppler Radar'}</span>
-            </button>
-
-            {/* IoT Sump Nodes Toggle */}
-            <button
-              onClick={() => setShowIoTSensors(!showIoTSensors)}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold transition-all ${
-                showIoTSensors
-                  ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/30'
-                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700'
-              }`}
-            >
-              <Gauge className="w-4 h-4 text-sky-400" />
-              <span>IoT Nodes ({iotSensors.length})</span>
-            </button>
-
-            {/* Real-time Dynamic Nowcast Toggle */}
-            <button
-              onClick={() => setIsNowcastActive(!isNowcastActive)}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold transition-all ${
-                isNowcastActive
-                  ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-lg shadow-red-500/30 animate-pulse'
-                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700'
-              }`}
-            >
-              <Zap className="w-4 h-4 text-amber-400" />
-              <span>{isNowcastActive ? 'Live Nowcast ON' : '🔴 Stream Nowcast'}</span>
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Citizen Lifeline & Community SOS Button */}
-            <button
-              onClick={() => onOpenCitizenLifeline ? onOpenCitizenLifeline() : undefined}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 hover:from-amber-500/30 hover:to-rose-500/30 text-amber-300 font-black border border-amber-500/40 transition-all shadow-[0_0_15px_rgba(245,158,11,0.25)] hover:scale-105"
-              title="Citizen Lifeline: Crowdsourced Waterlogging SOS, Relief Shelters & Farmer Support"
-            >
-              <LifeBuoy className="w-4 h-4 text-amber-400 animate-spin-slow" />
-              <span>Citizen SOS / Lifeline</span>
-            </button>
-
-            {/* Advance Pre-Flood Precaution Protocol Matrix Button */}
-            <button
-              onClick={() => setIsPrecautionModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 font-bold border border-cyan-500/30 transition-all"
-              title="Open Advance Pre-Disaster Precaution Protocol Matrix"
-            >
-              <Sparkles className="w-4 h-4 text-cyan-400" />
-              <span>Pre-Flood Actions</span>
-            </button>
-
-            {/* IoT Telemetry Drawer Button */}
-            <button
-              onClick={() => onOpenIoTSensors ? onOpenIoTSensors() : undefined}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 font-bold border border-sky-500/30 transition-all"
-            >
-              <Activity className="w-4 h-4 text-sky-400" />
-              <span className="hidden sm:inline">Pumps</span> ({activePumpsCount})
-            </button>
-
-            {/* Emergency Operations Center (EOC) Button */}
-            <button
-              onClick={() => onOpenEmergencyOps ? onOpenEmergencyOps() : undefined}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold border border-rose-500/40 transition-all shadow-[0_0_12px_rgba(244,63,94,0.25)]"
-            >
-              <ShieldAlert className="w-4 h-4 text-rose-400 animate-pulse" />
-              <span>EOC ({alerts.length})</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Basin Selector & Inference Execution Bar */}
+        {/* Basin Selector, Map Layer Toggles & Inference Execution Bar */}
         <div className="p-4 sm:p-5 rounded-3xl glass-card border border-slate-200 dark:border-white/10 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-inner">
@@ -475,6 +361,34 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
                 </div>
               </div>
             </div>
+            {/* Doppler Radar Map Layer Toggle */}
+            <button
+              onClick={() => setIsDopplerRadarActive(!isDopplerRadarActive)}
+              title={isDopplerRadarActive ? 'Hide Doppler Radar Overlay' : 'Show Live Doppler Radar'}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold transition-all border ${
+                isDopplerRadarActive
+                  ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40 shadow-inner'
+                  : 'bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-white/10 hover:text-cyan-500'
+              }`}
+            >
+              <CloudRain className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Radar</span>
+            </button>
+
+            {/* IoT Sensor Markers Toggle */}
+            <button
+              onClick={() => setShowIoTSensors(!showIoTSensors)}
+              title={showIoTSensors ? 'Hide IoT Sensor Pins' : 'Show IoT Sensor Pins'}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold transition-all border ${
+                showIoTSensors
+                  ? 'bg-sky-500/20 text-sky-400 border-sky-500/40 shadow-inner'
+                  : 'bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-white/10 hover:text-sky-500'
+              }`}
+            >
+              <Gauge className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">IoT</span>
+              <span className="font-mono">{iotSensors.length}</span>
+            </button>
           </div>
 
           {/* Inference Trigger Buttons */}
@@ -532,33 +446,6 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
             </div>
           </div>
         </div>
-
-        {/* Live Nowcast Status Banner (when active) */}
-        {isNowcastActive && nowcast && (
-          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-500/15 via-amber-500/10 to-transparent border border-rose-500/30 flex flex-wrap items-center justify-between gap-3 text-xs animate-fadeIn">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-rose-500 text-white animate-pulse">
-                <Zap className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="font-bold text-slate-900 dark:text-white block">
-                  🔴 LIVE NOWCAST ({nowcast.district}): {nowcast.telemetry.currentRainRateMmH} mm/h Precipitation
-                </span>
-                <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">
-                  Simulated Inflow: {nowcast.telemetry.simulatedInflowM3H.toLocaleString()} m³/h &bull; Radar Reflectivity: {nowcast.telemetry.radarReflectivityDbz} dBZ &bull; Temp: {nowcast.telemetry.currentTempC}°C
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className={`px-2.5 py-1 rounded-lg font-black text-[10px] uppercase font-mono ${
-                nowcast.telemetry.riskLevel === 'CRITICAL' ? 'bg-red-500 text-white animate-pulse' : 'bg-amber-500 text-white'
-              }`}>
-                {nowcast.telemetry.riskLevel} FLOOD RISK
-              </span>
-            </div>
-          </div>
-        )}
 
         {/* High-Density Telemetry Strip */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

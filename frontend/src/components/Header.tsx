@@ -8,15 +8,8 @@ import {
   FileDown, 
   Sun, 
   Moon,
-  CheckCircle2,
-  BrainCircuit,
-  Radio,
   Gauge,
-  Zap,
-  AlertTriangle,
-  Flame,
-  LifeBuoy,
-  Languages
+  LifeBuoy
 } from 'lucide-react';
 import { LiveAlert } from '../types';
 import { useLanguage } from '../context/LanguageContext';
@@ -85,15 +78,15 @@ export const Header: React.FC<HeaderProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xl font-black tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-500 bg-clip-text text-transparent">
-                JalaDrishti AI
+                {t('platformTitle', 'JalaDrishti AI')}
               </span>
               <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 uppercase tracking-wider">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                Live Flood Early Warning
+                {t('liveWarningBadge', 'Live Flood Early Warning')}
               </span>
             </div>
             <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 tracking-tight hidden md:block">
-              Urban Inundation Radar & Agricultural Waterlogging Prevention System
+              {t('platformSubtitle', 'Urban Inundation Radar & Agricultural Waterlogging Prevention System')}
             </span>
           </div>
         </div>
