@@ -14,31 +14,18 @@ const LanguageContext = createContext<LanguageContextType>({
 });
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [lang, setLangState] = useState<SupportedLanguage>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('jd-lang') as SupportedLanguage) || 'en';
-    }
-    return 'en';
-  });
+  // Clear any previously persisted language preference so the app defaults to English
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem('jd-lang');
+      document.documentElement.lang = 'en';
+    } catch (e) {}
+  }
 
-  const setLang = (newLang: SupportedLanguage) => {
-    setLangState(newLang);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('jd-lang', newLang);
-      document.documentElement.lang = newLang;
-    }
-  };
-
-  useEffect(() => {
-    document.documentElement.lang = lang;
-  }, [lang]);
+  const lang: SupportedLanguage = 'en';
+  const setLang = () => {};
 
   const t = (key: string, fallback?: string): string => {
-    const dict = TRANSLATIONS[lang] || TRANSLATIONS['en'];
-    if (dict && dict[key]) {
-      return dict[key];
-    }
-    // Fallback to English
     if (TRANSLATIONS['en'] && TRANSLATIONS['en'][key]) {
       return TRANSLATIONS['en'][key];
     }

@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { LiveAlert } from '../types';
 import { useLanguage } from '../context/LanguageContext';
-import { SupportedLanguage } from '../i18n/translations';
 
 export type MainTabType = 'map' | 'weather' | 'crop-water' | 'drainage';
 
@@ -30,12 +29,6 @@ interface HeaderProps {
   alerts?: LiveAlert[];
 }
 
-const LANG_OPTIONS: { code: SupportedLanguage; label: string; flag: string }[] = [
-  { code: 'en', label: 'EN', flag: '🇬🇧' },
-  { code: 'kn', label: 'ಕನ್ನಡ', flag: '🇮🇳' },
-  { code: 'hi', label: 'हि', flag: '🇮🇳' }
-];
-
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
@@ -48,7 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCitizenLifeline,
   alerts = []
 }) => {
-  const { lang, setLang, t } = useLanguage();
+  const { t } = useLanguage();
   // Rotate through alerts for the live ticker
   const [currentAlertIdx, setCurrentAlertIdx] = useState<number>(0);
 
@@ -189,24 +182,6 @@ export const Header: React.FC<HeaderProps> = ({
             <FileDown className="w-4 h-4 text-cyan-400" />
             <span className="hidden sm:inline">{t('btnExportPdf', 'Export PDF')}</span>
           </button>
-
-          {/* Global Language Switcher */}
-          <div className="flex items-center gap-0.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-sm" title="Change Language / ಭಾಷೆ ಬದಲಾಯಿಸಿ / भाषा बदलें">
-            {LANG_OPTIONS.map((opt) => (
-              <button
-                key={opt.code}
-                onClick={() => setLang(opt.code)}
-                className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all duration-150 ${
-                  lang === opt.code
-                    ? 'bg-cyan-500 text-white shadow-[0_0_8px_rgba(6,182,212,0.5)]'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-
           {/* Theme Toggle */}
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
