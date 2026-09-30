@@ -687,7 +687,8 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
                   url={`${radarMeta.host}${currentRadarFrame.path}/256/{z}/{x}/{y}/4/1_1.png`}
                   opacity={radarOpacity}
                   zIndex={100}
-                  maxZoom={19}
+                  maxZoom={20}
+                  maxNativeZoom={7}
                 />
               )}
 
