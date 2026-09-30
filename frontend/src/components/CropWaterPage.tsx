@@ -25,7 +25,6 @@ import {
   Info,
   Printer,
   Download,
-  Languages,
   Zap,
   CloudRain,
   TrendingUp
@@ -40,6 +39,7 @@ import {
   ReferenceLine 
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useLanguage } from '../context/LanguageContext';
 
 interface CropWaterPageProps {
   initialDistrict?: string;
@@ -73,7 +73,7 @@ const POPULAR_PRESETS = [
 export const CropWaterPage: React.FC<CropWaterPageProps> = ({
   initialDistrict = 'Bengaluru Urban'
 }) => {
-  const [lang, setLang] = useState<'en' | 'kn'>('en');
+  const { lang, t } = useLanguage();
   const [crops, setCrops] = useState<string[]>([]);
   const [categories, setCategories] = useState<Record<string, string[]>>({});
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -214,38 +214,15 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
             <span className="text-xs text-slate-400 font-semibold hidden sm:inline">&bull; 100+ Karnataka Crops</span>
           </div>
           <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 dark:text-white mt-2">
-            {lang === 'kn' ? 'ಸ್ಮಾರ್ಟ್ ಬೆಳೆ ನೀರು & ನೀರಾವರಿ ಸಲಹೆಗಾರ' : 'Smart Crop Water & Irrigation Advisor'}
+            {t('cropPageTitle', 'Smart Crop Water & Irrigation Advisor')}
           </h2>
           <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {lang === 'kn'
-              ? 'ಕರ್ನಾಟಕದ ಕೃಷಿಗಾಗಿ ನಿಖರ ಬೇರು-ವಲಯ ನೀರಾವರಿ ವೇಳಾಪಟ್ಟಿ. ಅತಿಯಾದ ನೀರಿನಿಂದ ಬೆಳೆ ಕೊಳೆಯುವುದನ್ನು ತಪ್ಪಿಸಿ.'
-              : 'Dynamic root-zone water budgeting for Karnataka agriculture. Prevent root suffocation during flood events and eliminate drought stress.'}
+            {t('cropPageSubtitle', 'Dynamic root-zone water budgeting for Karnataka agriculture. Prevent root suffocation during flood events and eliminate drought stress.')}
           </p>
         </div>
 
-        {/* Action Buttons & Language Switcher */}
+        {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Language Toggle */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-2xl p-1 border border-slate-200 dark:border-slate-700">
-            <Languages className="w-4 h-4 text-emerald-500 ml-2 mr-1" />
-            <button
-              onClick={() => setLang('en')}
-              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
-                lang === 'en' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-white'
-              }`}
-            >
-              English
-            </button>
-            <button
-              onClick={() => setLang('kn')}
-              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
-                lang === 'kn' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-white'
-              }`}
-            >
-              ಕನ್ನಡ
-            </button>
-          </div>
-
           {/* Print Prescription Card Button */}
           <button
             onClick={handlePrintPrescription}
@@ -253,7 +230,7 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
             title="Print Official Farmer Irrigation Prescription Card"
           >
             <Printer className="w-4 h-4 text-emerald-400" />
-            <span className="hidden sm:inline">{lang === 'kn' ? 'ಪ್ರಿಸ್ಕ್ರಿಪ್ಷನ್ ಮುದ್ರಿಸಿ' : 'Print Prescription'}</span>
+            <span className="hidden sm:inline">{t('printPrescription', 'Print Prescription')}</span>
           </button>
 
           {/* Catalog Size Stats */}
@@ -283,12 +260,10 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
             </div>
             <div>
               <h4 className="text-sm font-bold text-cyan-300">
-                {lang === 'kn' ? 'ಮುಂದಿನ 7 ದಿನಗಳಲ್ಲಿ ಮಳೆಯಾಗುವ ಮುನ್ಸೂಚನೆ ಇದೆ!' : 'Rainfall Expected in Next 7 Days!'} ({upcomingRainfallMm.toFixed(1)} mm total)
+                {t('rainWarningTitle', 'Rainfall Expected in Next 7 Days!')} ({upcomingRainfallMm.toFixed(1)} mm total)
               </h4>
               <p className="text-xs text-slate-300">
-                {lang === 'kn'
-                  ? 'ನೈಸರ್ಗಿಕ ಮಳೆಯಿಂದ ಭೂಮಿಯು ತೇವವಾಗಲಿದೆ. ಅನಗತ್ಯ ನೀರಾವರಿಯನ್ನು ಮುಂದೂಡಿ, ವಿದ್ಯುತ್ ಮತ್ತು ನೀರನ್ನು ಉಳಿಸಿ.'
-                  : 'Natural precipitation will recharge the root-zone. Consider delaying irrigation to prevent root anoxia and save farm pumping electricity.'}
+                {t('rainWarningDesc', 'Natural precipitation will recharge the root-zone. Consider delaying irrigation to prevent root anoxia and save farm pumping electricity.')}
               </p>
             </div>
           </div>
@@ -302,7 +277,7 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
       <div className="space-y-2">
         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-          {lang === 'kn' ? 'ತ್ವರಿತ ಜನಪ್ರಿಯ ಬೆಳೆಗಳು:' : 'Quick Farmer Presets:'}
+          {t('quickFarmerPresets', 'Quick Farmer Presets:')}
         </span>
         <div className="flex flex-wrap gap-2">
           {POPULAR_PRESETS.map((preset) => (

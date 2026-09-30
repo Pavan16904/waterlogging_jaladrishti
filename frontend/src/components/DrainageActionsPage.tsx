@@ -26,6 +26,7 @@ import {
   Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useLanguage } from '../context/LanguageContext';
 
 interface DrainageActionsPageProps {
   advisories: DrainageAdvisory[];
@@ -42,6 +43,7 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
   onOpenExportModal,
   onNavigateToMap
 }) => {
+  const { t } = useLanguage();
   const [actionList, setActionList] = useState<DrainageAdvisory[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<string>('All');
   const [agencyFilter, setAgencyFilter] = useState<string>('All');
@@ -167,10 +169,10 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
               </span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white mt-2">
-              Rule-Based Drainage Advisory & Action Matrix
+              {t('drainagePageTitle', 'Rule-Based Drainage Advisory & Action Matrix')}
             </h2>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1 font-medium">
-              Autonomous civil intervention protocols and heavy machinery work orders derived from multi-sensor radar backscatter, slope gradience, and hydraulic ponding depth.
+              {t('drainagePageSubtitle', 'Autonomous civil intervention protocols and heavy machinery work orders derived from multi-sensor radar backscatter, slope gradience, and hydraulic ponding depth.')}
             </p>
           </div>
 

@@ -15,9 +15,12 @@ import {
   Zap,
   AlertTriangle,
   Flame,
-  LifeBuoy
+  LifeBuoy,
+  Languages
 } from 'lucide-react';
 import { LiveAlert } from '../types';
+import { useLanguage } from '../context/LanguageContext';
+import { SupportedLanguage } from '../i18n/translations';
 
 export type MainTabType = 'map' | 'weather' | 'crop-water' | 'drainage';
 
@@ -34,6 +37,12 @@ interface HeaderProps {
   alerts?: LiveAlert[];
 }
 
+const LANG_OPTIONS: { code: SupportedLanguage; label: string; flag: string }[] = [
+  { code: 'en', label: 'EN', flag: '🇬🇧' },
+  { code: 'kn', label: 'ಕನ್ನಡ', flag: '🇮🇳' },
+  { code: 'hi', label: 'हि', flag: '🇮🇳' }
+];
+
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
@@ -46,6 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCitizenLifeline,
   alerts = []
 }) => {
+  const { lang, setLang, t } = useLanguage();
   // Rotate through alerts for the live ticker
   const [currentAlertIdx, setCurrentAlertIdx] = useState<number>(0);
 
@@ -99,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Map className="w-4 h-4 text-cyan-400" />
-            <span>Flood Map</span>
+            <span>{t('navFloodMap', 'Flood Map')}</span>
           </button>
 
           <button
@@ -111,7 +121,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <CloudSun className="w-4 h-4 text-sky-400" />
-            <span>Weather & Radar</span>
+            <span>{t('navWeather', 'Weather & Radar')}</span>
           </button>
 
           <button
@@ -123,7 +133,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Sprout className="w-4 h-4 text-emerald-400" />
-            <span>Crop Advisor</span>
+            <span>{t('navCropWater', 'Crop Advisor')}</span>
           </button>
 
           <button
@@ -135,12 +145,12 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <ShieldAlert className="w-4 h-4 text-rose-400" />
-            <span>Drainage Actions</span>
+            <span>{t('navDrainage', 'Drainage Actions')}</span>
           </button>
         </nav>
 
         {/* Right Controls & Real-Time Action Triggers */}
-        <div className="flex items-center gap-2.5 text-xs">
+        <div className="flex items-center gap-2 text-xs">
           
           {/* IoT Telemetry Drawer Button */}
           {onOpenIoTSensors && (
@@ -150,7 +160,7 @@ export const Header: React.FC<HeaderProps> = ({
               title="Open Live IoT Sump & Water Level Telemetry"
             >
               <Gauge className="w-3.5 h-3.5 text-sky-400" />
-              <span>IoT Telemetry</span>
+              <span>{t('btnIoTSensors', 'IoT Telemetry')}</span>
             </button>
           )}
 
@@ -162,7 +172,7 @@ export const Header: React.FC<HeaderProps> = ({
               title="Open Emergency Operations Center & Incident Dispatch"
             >
               <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-              <span className="hidden sm:inline">Emergency EOC</span>
+              <span className="hidden sm:inline">{t('btnEmergencyEOC', 'Emergency EOC')}</span>
             </button>
           )}
 
@@ -174,25 +184,41 @@ export const Header: React.FC<HeaderProps> = ({
               title="Citizen Lifeline: Crowdsourced Waterlogging SOS, Relief Shelters & Farmer Support"
             >
               <LifeBuoy className="w-4 h-4 text-amber-400 animate-spin-slow" />
-              <span>Citizen SOS / Lifeline</span>
+              <span className="hidden md:inline">{t('btnCitizenLifeline', 'Citizen SOS')}</span>
             </button>
           )}
 
-
-
+          {/* Export PDF */}
           <button
             onClick={onOpenExportModal}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold border border-slate-200 dark:border-white/10 transition-all shadow-sm"
           >
             <FileDown className="w-4 h-4 text-cyan-400" />
-            <span className="hidden sm:inline">Export PDF</span>
+            <span className="hidden sm:inline">{t('btnExportPdf', 'Export PDF')}</span>
           </button>
+
+          {/* Global Language Switcher */}
+          <div className="flex items-center gap-0.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-sm" title="Change Language / ಭಾಷೆ ಬದಲಾಯಿಸಿ / भाषा बदलें">
+            {LANG_OPTIONS.map((opt) => (
+              <button
+                key={opt.code}
+                onClick={() => setLang(opt.code)}
+                className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all duration-150 ${
+                  lang === opt.code
+                    ? 'bg-cyan-500 text-white shadow-[0_0_8px_rgba(6,182,212,0.5)]'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
 
           {/* Theme Toggle */}
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             className="p-2 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-white/10 transition-colors shadow-sm"
-            title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+            title={t('themeSwitch', 'Switch Theme')}
           >
             {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
           </button>
@@ -202,7 +228,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Live Emergency Ticker Ribbon */}
       {activeAlert && (
-        <div className="flex items-center justify-between gap-3 px-3 py-1 rounded-xl bg-slate-900/90 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-300">
+        <div className="flex items-center justify-between gap-3 px-3 py-1.5 bg-slate-900/95 dark:bg-slate-950 border-t border-red-500/20 text-[11px] text-slate-300">
           <div className="flex items-center gap-2 truncate">
             <span className={`px-2 py-0.5 rounded font-black text-[9px] uppercase ${
               activeAlert.level === 'CRITICAL' ? 'bg-red-500 text-white animate-pulse' : 'bg-amber-500 text-white'
@@ -217,7 +243,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={onOpenEmergencyOps}
             className="shrink-0 font-bold text-cyan-400 hover:text-cyan-300 underline text-[10px] flex items-center gap-1"
           >
-            <span>View Incident Brief</span> &rarr;
+            <span>{t('emergencyCenterTitle', 'View Incident Brief')}</span> &rarr;
           </button>
         </div>
       )}

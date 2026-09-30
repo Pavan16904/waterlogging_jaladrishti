@@ -12,8 +12,10 @@ import { LiveIoTSensorsDrawer } from './components/LiveIoTSensorsDrawer';
 import { EmergencyOpsModal } from './components/EmergencyOpsModal';
 import { CitizenLifelineModal } from './components/CitizenLifelineModal';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useLanguage } from './context/LanguageContext';
 
 export function App() {
+  const { t } = useLanguage();
   // Theme State (Dark / Light)
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     if (typeof window !== 'undefined') {
@@ -387,17 +389,17 @@ export function App() {
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold text-[11px] border border-emerald-500/20">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              Satellite Imagery Live
+              {t('satelliteLive', 'Satellite Imagery Live')}
             </span>
 
             <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-semibold text-[11px] border border-cyan-500/20">
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
-              Live Doppler Radar
+              {t('radarLive', 'Live Doppler Radar')}
             </span>
 
             <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 font-semibold text-[11px] border border-sky-500/20">
               <span className="w-2 h-2 rounded-full bg-sky-500"></span>
-              {iotSensors.length} Water Level Sensors
+              {iotSensors.length} {t('waterSensors', 'Water Level Sensors')}
             </span>
           </div>
 

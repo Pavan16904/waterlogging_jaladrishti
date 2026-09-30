@@ -33,6 +33,7 @@ import {
   Bar 
 } from 'recharts';
 import { motion } from 'framer-motion';
+import { useLanguage } from '../context/LanguageContext';
 
 interface WeatherPageProps {
   onNavigateToCropWater: (district: string) => void;
@@ -43,6 +44,7 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
   onNavigateToCropWater,
   onNavigateToFloodMap
 }) => {
+  const { t } = useLanguage();
   const [selectedDistrict, setSelectedDistrict] = useState<string>('Bengaluru Urban');
   const [districtData, setDistrictData] = useState<any>(null);
   const [allDistrictsSummary, setAllDistrictsSummary] = useState<any[]>([]);
@@ -140,10 +142,10 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
             </span>
           </div>
           <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 dark:text-white mt-2">
-            Karnataka Agro-Weather Observatory
+            {t('weatherObservatoryTitle', 'Karnataka Agro-Weather Observatory')}
           </h2>
           <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Real-time 10-day precipitation forecasts, temperature regimes, and atmospheric water demand (ET₀) across all 31 districts.
+            {t('weatherObservatoryDesc', 'Real-time 10-day precipitation forecasts, temperature regimes, and atmospheric water demand (ET₀) across all 31 districts.')}
           </p>
         </div>
 
