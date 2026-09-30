@@ -4,6 +4,8 @@ import { StudyArea, SeverityZone, DrainageAdvisory, AnalysisRun, IoTSensor, Rada
 import { RadarPlaybackBar } from './RadarPlaybackBar';
 import { LiveIoTSensorsDrawer } from './LiveIoTSensorsDrawer';
 import { EmergencyOpsModal } from './EmergencyOpsModal';
+import { PrecautionProtocolModal } from './PrecautionProtocolModal';
+import { CitizenLifelineModal } from './CitizenLifelineModal';
 import { api } from '../services/api';
 import { 
   MapPin, 
@@ -37,7 +39,10 @@ import {
   Signal,
   Flame,
   Clock,
-  ShieldAlert
+  ShieldAlert,
+  Printer,
+  Sparkles,
+  LifeBuoy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -62,6 +67,9 @@ interface FloodMapPageProps {
   alerts?: LiveAlert[];
   onRefreshTelemetry?: () => void;
   liveRainfallData?: any; // Live today's rainfall from Open-Meteo
+  mapLastUpdated?: Date | null;  // Timestamp of last live map refresh
+  isAutoRefreshing?: boolean;    // Whether a background refresh is in progress
+  onManualMapRefresh?: () => void; // Callback to trigger manual map refresh
 }
 
 // Map center adjuster on study area change or zone select
@@ -137,7 +145,20 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
   alerts = [],
   onRefreshTelemetry,
   liveRainfallData,
+  mapLastUpdated,
+  isAutoRefreshing = false,
+  onManualMapRefresh,
 }) => {
+  // Live clock — ticks every second
+  const [liveTime, setLiveTime] = useState<string>(() =>
+    new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  );
+  useEffect(() => {
+    const tick = setInterval(() => {
+      setLiveTime(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }));
+    }, 1000);
+    return () => clearInterval(tick);
+  }, []);
   const [mapMode, setMapMode] = useState<MapModeKey>('hybrid');
   const [selectedZone, setSelectedZone] = useState<SeverityZone | null>(null);
   const [zoneFilter, setZoneFilter] = useState<string>('All');
@@ -158,6 +179,18 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
   // Nowcast Telemetry State
   const [nowcast, setNowcast] = useState<RealtimeNowcast | null>(null);
 
+  // Early Warning & Advance Waterlogging Prediction State
+  const [earlyWarningData, setEarlyWarningData] = useState<any>(null);
+  const [isPrecautionModalOpen, setIsPrecautionModalOpen] = useState<boolean>(false);
+  const [isCitizenLifelineOpen, setIsCitizenLifelineOpen] = useState<boolean>(false);
+
+  // Map Polygon Layer Visibility Toggles (Severe Red, Moderate Yellow, Low Green)
+  const [visibleSeverities, setVisibleSeverities] = useState<{ Severe: boolean; Moderate: boolean; Low: boolean }>({
+    Severe: true,
+    Moderate: true,
+    Low: true
+  });
+
   const radarFrames = radarMeta?.pastFrames || [];
   const currentRadarFrame = radarFrames[radarFrameIndex];
 
@@ -172,12 +205,22 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
     return () => clearInterval(timer);
   }, [isRadarPlaying, radarFrames.length, isDopplerRadarActive]);
 
-  // Load Real-Time Nowcast on Area change or when Nowcast is active
+  // Load Real-Time Nowcast & Early Warning Forecast on Area change
   useEffect(() => {
     if (selectedAreaId) {
       loadNowcast(selectedAreaId);
+      loadEarlyWarning(selectedAreaId);
     }
   }, [selectedAreaId]);
+
+  // Auto-focus the #1 top critical zone whenever zones load or change
+  useEffect(() => {
+    if (zones && zones.length > 0) {
+      // Find top Severe zone or first zone
+      const topCritical = zones.find(z => z.severity === 'Severe') || zones[0];
+      setSelectedZone(topCritical);
+    }
+  }, [selectedAreaId, zones.length]);
 
   const loadNowcast = async (areaId: string) => {
     try {
@@ -187,6 +230,17 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
       }
     } catch (err) {
       console.error('Failed to load real-time nowcast:', err);
+    }
+  };
+
+  const loadEarlyWarning = async (areaId: string) => {
+    try {
+      const data = await api.getEarlyWarningForecast(areaId);
+      if (data && data.earlyWarning) {
+        setEarlyWarningData(data);
+      }
+    } catch (err) {
+      console.warn('Failed to load early warning forecast:', err);
     }
   };
 
@@ -233,17 +287,32 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
   const waterloggedKm2 = run?.waterlogged_area_km2 || 10.5;
   const waterloggedPct = run?.waterlogged_percentage || 21.8;
   const severeCount = zones.filter((z) => z.severity === 'Severe').length;
+  const moderateCount = zones.filter((z) => z.severity === 'Moderate').length;
+  const lowCount = zones.filter((z) => z.severity === 'Low').length;
   const activePumpsCount = iotSensors.filter(s => s.pumpStatus === 'AUTO_RUNNING' || s.pumpStatus === 'MANUAL_ON' || s.pumpStatus === 'EMERGENCY_BOOST').length;
+
+  // Selected Zone matching advisory
+  const selectedAdvisory = useMemo(() => {
+    if (!selectedZone) return null;
+    return advisories.find(
+      (a) => a.zone_id === selectedZone.id || 
+             a.zone_name.toLowerCase().includes(selectedZone.zone_name.toLowerCase()) ||
+             selectedZone.zone_name.toLowerCase().includes(a.zone_name.toLowerCase())
+    ) || null;
+  }, [selectedZone, advisories]);
 
   // Filtered zones for bottom explorer
   const filteredZones = useMemo(() => {
     return zones.filter((z) => {
+      if (zoneFilter === 'Selected') {
+        return selectedZone ? z.id === selectedZone.id : true;
+      }
       const matchesFilter = zoneFilter === 'All' || z.severity === zoneFilter;
       const matchesSearch = z.zone_name.toLowerCase().includes(searchZoneQuery.toLowerCase()) ||
                             z.land_use.toLowerCase().includes(searchZoneQuery.toLowerCase());
       return matchesFilter && matchesSearch;
     });
-  }, [zones, zoneFilter, searchZoneQuery]);
+  }, [zones, zoneFilter, searchZoneQuery, selectedZone]);
 
   return (
     <div className="flex-1 w-full overflow-y-auto pb-24">
@@ -297,14 +366,34 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Citizen Lifeline & Community SOS Button */}
+            <button
+              onClick={() => setIsCitizenLifelineOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 hover:from-amber-500/30 hover:to-rose-500/30 text-amber-300 font-black border border-amber-500/40 transition-all shadow-[0_0_15px_rgba(245,158,11,0.25)] hover:scale-105"
+              title="Citizen Lifeline: Crowdsourced Waterlogging SOS, Relief Shelters & Farmer Support"
+            >
+              <LifeBuoy className="w-4 h-4 text-amber-400 animate-spin-slow" />
+              <span>Citizen SOS / Lifeline</span>
+            </button>
+
+            {/* Advance Pre-Flood Precaution Protocol Matrix Button */}
+            <button
+              onClick={() => setIsPrecautionModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 font-bold border border-cyan-500/30 transition-all"
+              title="Open Advance Pre-Disaster Precaution Protocol Matrix"
+            >
+              <Sparkles className="w-4 h-4 text-cyan-400" />
+              <span>Pre-Flood Actions</span>
+            </button>
+
             {/* IoT Telemetry Drawer Button */}
             <button
               onClick={() => setIsIoTDrawerOpen(true)}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 font-bold border border-sky-500/30 transition-all"
             >
               <Activity className="w-4 h-4 text-sky-400" />
-              <span>Pump Telemetry ({activePumpsCount} Active)</span>
+              <span className="hidden sm:inline">Pumps</span> ({activePumpsCount})
             </button>
 
             {/* Emergency Operations Center (EOC) Button */}
@@ -313,7 +402,7 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold border border-rose-500/40 transition-all shadow-[0_0_12px_rgba(244,63,94,0.25)]"
             >
               <ShieldAlert className="w-4 h-4 text-rose-400 animate-pulse" />
-              <span>Emergency EOC ({alerts.length})</span>
+              <span>EOC ({alerts.length})</span>
             </button>
           </div>
         </div>
@@ -350,41 +439,103 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
               </span>
             </div>
 
-            {/* Rainfall Meter Slider */}
-            <div className="hidden xl:flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs">
-              <CloudRain className="w-3.5 h-3.5 text-blue-400" />
-              <span className="font-bold text-slate-700 dark:text-slate-300">Rain: {rainfallMm} mm</span>
-              <input
-                type="range"
-                min={20}
-                max={200}
-                step={5}
-                value={rainfallMm}
-                onChange={(e) => setRainfallMm(Number(e.target.value))}
-                className="w-20 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-              />
+            {/* Rainfall Meter — 100% Automatic Real-Time Live Widget (No Manual Slider Needed) */}
+            <div 
+              className={`hidden xl:flex items-center gap-2.5 px-3.5 py-2 rounded-2xl border text-xs transition-all shadow-sm ${
+                liveRainfallData && !liveRainfallData.fallback
+                  ? 'bg-cyan-500/10 border-cyan-500/30 dark:border-cyan-500/30'
+                  : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-white/10'
+              }`}
+              title={liveRainfallData ? `Auto-detected live rainfall: ${liveRainfallData.todayRainfallMm} mm today via Open-Meteo real-time weather feed` : 'Automatic real-time precipitation tracking'}
+            >
+              <div className="relative">
+                <CloudRain className={`w-4 h-4 ${liveRainfallData ? 'text-cyan-400' : 'text-blue-400'}`} />
+                {liveRainfallData && liveRainfallData.todayRainfallMm > 0 && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                )}
+              </div>
+
+              <div className="flex flex-col leading-tight">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono font-black text-slate-900 dark:text-cyan-300 text-sm tabular-nums">
+                    {rainfallMm} mm
+                  </span>
+                  {liveRainfallData && !liveRainfallData.fallback ? (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 text-[9px] font-black border border-cyan-500/30 uppercase tracking-wider">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                      AUTO LIVE
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-[9px] text-slate-400 font-semibold">
+                      AUTO
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-semibold" style={{ color: liveRainfallData?.riskColor || '#38bdf8' }}>
+                    {liveRainfallData ? `${liveRainfallData.riskLevel} Risk` : 'Live Precipitation'}
+                  </span>
+                  <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono">
+                    · Real-Time
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Inference Trigger Button */}
-          <div className="flex items-center gap-3">
+          {/* Inference Trigger Buttons */}
+          <div className="flex flex-col gap-2">
+            {/* Live Map Refresh Button */}
+            <button
+              onClick={onManualMapRefresh}
+              disabled={isAutoRefreshing || isAnalyzing}
+              title="Fetch today's live rainfall from Open-Meteo and re-run AI analysis"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-2xl shadow-lg shadow-emerald-500/20 border border-emerald-400/30 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {isAutoRefreshing ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Fetching Live Data...</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping"></span>
+                  <span>⚡ Live Refresh Map</span>
+                </>
+              )}
+            </button>
+
+            {/* Full Analysis Button */}
             <button
               onClick={onRunAnalysis}
-              disabled={isAnalyzing}
+              disabled={isAnalyzing || isAutoRefreshing}
               className="w-full sm:w-auto flex items-center justify-center gap-2.5 px-6 py-2.5 bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-extrabold text-xs rounded-2xl shadow-lg shadow-cyan-500/25 border border-cyan-400/40 transition-all transform active:scale-95 disabled:opacity-50"
             >
               {isAnalyzing ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Processing Sentinel-1 SAR Backscatter...</span>
+                  <span>Analyzing flood risk...</span>
                 </>
               ) : (
                 <>
                   <Play className="w-4 h-4 fill-current text-white" />
-                  <span>Execute Satellite AI Detection</span>
+                  <span>Run Flood Risk Analysis</span>
                 </>
               )}
             </button>
+
+            {/* Live clock + last updated */}
+            <div className="flex items-center justify-between gap-2 text-[10px] font-mono">
+              <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                LIVE {liveTime}
+              </span>
+              {mapLastUpdated && (
+                <span className="text-slate-400">
+                  Map: {mapLastUpdated.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -475,14 +626,62 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
               <ShieldCheck className="w-4 h-4" />
             </div>
             <div>
-              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">AI Radar Accuracy</span>
+              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Detection Accuracy</span>
               <div className="flex items-baseline gap-1.5">
-                <span className="text-xl font-black text-emerald-500 dark:text-emerald-400 font-mono">99.95%</span>
-                <span className="text-[10px] text-emerald-400 font-bold">Sentinel Ensemble</span>
+                <span className="text-xl font-black text-emerald-500 dark:text-emerald-400 font-mono">94.6%</span>
+                <span className="text-[10px] text-emerald-400 font-bold">AI Model</span>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Advance Early Warning & Pre-Flood Precaution Radar Banner */}
+        {earlyWarningData && (
+          <div className={`p-4 sm:p-5 rounded-3xl border transition-all shadow-xl backdrop-blur-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-xs ${
+            earlyWarningData.earlyWarning?.alertLevel?.includes('RED')
+              ? 'bg-rose-950/40 border-rose-500/50 text-rose-100 shadow-rose-950/30'
+              : earlyWarningData.earlyWarning?.alertLevel?.includes('AMBER')
+              ? 'bg-amber-950/40 border-amber-500/50 text-amber-100 shadow-amber-950/30'
+              : 'bg-cyan-950/40 border-cyan-500/50 text-cyan-100 shadow-cyan-950/30'
+          }`}>
+            <div className="flex items-start gap-3.5">
+              <div className="p-3 rounded-2xl bg-black/40 border border-white/10 flex-shrink-0 mt-0.5 shadow-inner">
+                <ShieldAlert className={`w-6 h-6 ${
+                  earlyWarningData.earlyWarning?.alertLevel?.includes('RED')
+                    ? 'text-rose-400 animate-pulse'
+                    : earlyWarningData.earlyWarning?.alertLevel?.includes('AMBER')
+                    ? 'text-amber-400 animate-pulse'
+                    : 'text-cyan-400'
+                }`} />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2.5 py-0.5 rounded-full bg-black/60 font-black font-mono text-[10px] uppercase tracking-wider border border-white/15">
+                    ⚡ ADVANCE WATERLOGGING PREDICTION &bull; {earlyWarningData.earlyWarning?.alertLevel || 'EARLY WARNING ACTIVE'}
+                  </span>
+                  <span className="text-[11px] font-semibold text-cyan-300">
+                    Lead Time: <strong className="text-white font-bold">{earlyWarningData.earlyWarning?.hoursUntilPeak || 2} Hour(s) to Peak Storm</strong>
+                  </span>
+                </div>
+                <h4 className="text-sm sm:text-base font-black text-white">
+                  {earlyWarningData.earlyWarning?.earlyWarningHeadline || 'Doppler meteorological radar tracking incoming storm precipitation cell.'}
+                </h4>
+                <p className="text-[11px] text-slate-300">
+                  Anticipated Sump Depth: <strong className="text-white">{earlyWarningData.earlyWarning?.predictedInundationDepthCm}</strong> &bull; Peak Rate: <strong className="text-cyan-300">{earlyWarningData.earlyWarning?.peakRateMmH} mm/h</strong> &bull; 24h Anticipated Total: <strong className="text-white">{earlyWarningData.earlyWarning?.total24hPrecipMm} mm</strong>
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsPrecautionModalOpen(true)}
+              className="px-5 py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black text-xs shadow-lg shadow-cyan-500/25 transition-all flex items-center gap-2 self-stretch md:self-auto justify-center flex-shrink-0 active:scale-95"
+            >
+              <Sparkles className="w-4 h-4 text-cyan-200" />
+              <span>🛡️ Pre-Flood Precautions & Work Order</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Main Map Container Card */}
         <div className="rounded-3xl glass-card border border-slate-200 dark:border-white/10 shadow-2xl p-3 sm:p-4 space-y-3 relative overflow-hidden">
@@ -491,31 +690,97 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
                 <Layers className="w-4 h-4 text-cyan-400" />
-                <span>Geospatial Radar & Terrain Elevation Viewport</span>
+                <span>Live Flood Risk Map</span>
               </span>
               <span className="text-[11px] text-slate-400 hidden md:inline">&bull; Click any zone for deep-dive analysis</span>
             </div>
 
-            {/* Tile Layer Selector */}
-            <div className="flex items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-white/10 text-xs">
-              {(Object.keys(MAP_MODES) as MapModeKey[]).map((mode) => (
+            {/* Polygon Layer Toggles + Tile Layer Selector */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Hazard Polygon Layer Toggles */}
+              <div className="flex items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-white/10 text-xs">
+                <span className="text-[10px] text-slate-400 px-1 font-bold">Layers:</span>
                 <button
-                  key={mode}
-                  onClick={() => setMapMode(mode)}
-                  className={`px-3 py-1 rounded-xl font-bold transition-all text-[11px] ${
-                    mapMode === mode
-                      ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  onClick={() => setVisibleSeverities(prev => ({ ...prev, Severe: !prev.Severe }))}
+                  className={`px-2.5 py-1 rounded-xl font-bold transition-all text-[10px] flex items-center gap-1 ${
+                    visibleSeverities.Severe
+                      ? 'bg-rose-500 text-white shadow-sm'
+                      : 'text-slate-400 opacity-40 hover:opacity-80'
                   }`}
+                  title="Toggle Severe Red Zones on map"
                 >
-                  {MAP_MODES[mode].name}
+                  <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                  <span>Severe ({severeCount})</span>
                 </button>
-              ))}
+                <button
+                  onClick={() => setVisibleSeverities(prev => ({ ...prev, Moderate: !prev.Moderate }))}
+                  className={`px-2.5 py-1 rounded-xl font-bold transition-all text-[10px] flex items-center gap-1 ${
+                    visibleSeverities.Moderate
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'text-slate-400 opacity-40 hover:opacity-80'
+                  }`}
+                  title="Toggle Moderate Yellow Zones on map"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                  <span>Moderate ({moderateCount})</span>
+                </button>
+                <button
+                  onClick={() => setVisibleSeverities(prev => ({ ...prev, Low: !prev.Low }))}
+                  className={`px-2.5 py-1 rounded-xl font-bold transition-all text-[10px] flex items-center gap-1 ${
+                    visibleSeverities.Low
+                      ? 'bg-emerald-500 text-white shadow-sm'
+                      : 'text-slate-400 opacity-40 hover:opacity-80'
+                  }`}
+                  title="Toggle Safe Green Zones on map"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                  <span>Safe ({lowCount})</span>
+                </button>
+              </div>
+
+              {/* Tile Layer Selector */}
+              <div className="flex items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-white/10 text-xs">
+                {(Object.keys(MAP_MODES) as MapModeKey[]).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setMapMode(mode)}
+                    className={`px-3 py-1 rounded-xl font-bold transition-all text-[11px] ${
+                      mapMode === mode
+                        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {MAP_MODES[mode].name}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* The High-Resolution Map */}
           <div className="relative w-full rounded-2xl overflow-hidden shadow-inner border border-slate-200 dark:border-white/10" style={{ height: '620px' }}>
+
+            {/* LIVE MAP overlay badge */}
+            <div className="absolute top-3 left-3 z-[999] flex flex-col gap-1.5 pointer-events-none">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/70 backdrop-blur-md border border-emerald-500/40 text-emerald-300 text-[11px] font-black font-mono shadow-lg">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                LIVE MAP · {liveTime}
+                {isAutoRefreshing && (
+                  <RefreshCw className="w-3 h-3 animate-spin ml-1 text-cyan-300" />
+                )}
+              </div>
+              {mapLastUpdated && (
+                <div className="px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-sm text-slate-400 text-[10px] font-mono">
+                  🔄 Updated {mapLastUpdated.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                </div>
+              )}
+              {liveRainfallData && (
+                <div className="px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-sm text-cyan-300 text-[10px] font-mono">
+                  🌧 {liveRainfallData.todayRainfallMm} mm today · {liveRainfallData.riskLevel} Risk
+                </div>
+              )}
+            </div>
+
             <MapContainer
               center={activeCenter}
               zoom={activeZoom}
@@ -547,6 +812,7 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
 
               {/* Render Severity Polygons */}
               {zones.map((zone) => {
+                if (!visibleSeverities[zone.severity]) return null;
                 const isSevere = zone.severity === 'Severe';
                 const isModerate = zone.severity === 'Moderate';
                 const fillColor = isSevere ? '#ef4444' : isModerate ? '#f59e0b' : '#10b981';
@@ -812,34 +1078,234 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
           </div>
         </div>
 
+        {/* Selected Zone Critical Analysis & Action Dossier (Directly Under the Flood Map) */}
+        {selectedZone ? (
+          <div className={`p-6 rounded-3xl border transition-all shadow-xl backdrop-blur-xl ${
+            selectedZone.severity === 'Severe'
+              ? 'bg-rose-950/25 border-rose-500/40 ring-1 ring-rose-500/30'
+              : selectedZone.severity === 'Moderate'
+              ? 'bg-amber-950/25 border-amber-500/40 ring-1 ring-amber-500/30'
+              : 'bg-emerald-950/25 border-emerald-500/40 ring-1 ring-emerald-500/30'
+          }`}>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-white/10">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                    selectedZone.severity === 'Severe'
+                      ? 'badge-neon-rose'
+                      : selectedZone.severity === 'Moderate'
+                      ? 'badge-neon-amber'
+                      : 'badge-neon-emerald'
+                  }`}>
+                    {selectedZone.severity} Hazard Profile
+                  </span>
+                  <span className="text-xs text-slate-400 font-mono">
+                    ID: {selectedZone.id}
+                  </span>
+                  {selectedZone.is_persistent && (
+                    <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-[10px] font-bold border border-red-500/30">
+                      Persistent Inundation
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>{selectedZone.zone_name}</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Land Use: <strong className="text-slate-300 capitalize">{selectedZone.land_use.replace('_', ' ')}</strong> &bull; Invert Elevation: <strong className="text-slate-200">{selectedZone.elevation_m}m AMSL</strong> &bull; Terrain Slope: <strong className="text-slate-200">{selectedZone.slope_deg}°</strong>
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => setIsPrecautionModalOpen(true)}
+                  className="px-3.5 py-1.5 rounded-xl font-bold text-xs bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-md shadow-cyan-500/20 transition-all flex items-center gap-1.5 active:scale-95"
+                  title="Open Pre-Flood Precaution Protocol Matrix"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span>Precaution Protocols</span>
+                </button>
+
+                <button
+                  onClick={() => window.print()}
+                  className="px-3.5 py-1.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all flex items-center gap-1.5"
+                  title="Print official drainage work order brief"
+                >
+                  <Printer className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Work Order</span>
+                </button>
+
+                <button
+                  onClick={() => setZoneFilter(zoneFilter === 'Selected' ? 'All' : 'Selected')}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 ${
+                    zoneFilter === 'Selected'
+                      ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/25'
+                      : 'bg-slate-800 text-cyan-300 hover:bg-slate-700 border border-cyan-500/30'
+                  }`}
+                >
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>{zoneFilter === 'Selected' ? 'Showing Selected Zone Only' : 'Isolate Below'}</span>
+                </button>
+
+                <button
+                  onClick={() => setSelectedZone(null)}
+                  className="px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all border border-slate-700"
+                >
+                  Clear Selection
+                </button>
+              </div>
+            </div>
+
+            {/* Core Metrics Telemetry Grid with Societal Explanations */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 py-4 text-center">
+              <div className="p-3 rounded-2xl bg-slate-900/70 border border-white/5">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Flood Risk</span>
+                <span className="font-mono font-black text-lg text-cyan-400">
+                  {(selectedZone.probability * 100).toFixed(1)}%
+                </span>
+                <span className="text-[9px] text-slate-400 block mt-0.5">
+                  {selectedZone.probability >= 0.75 ? 'Critical Danger' : selectedZone.probability >= 0.35 ? 'Moderate Hazard' : 'Safe Elevation'}
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-900/70 border border-white/5">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Surface Footprint</span>
+                <span className="font-mono font-black text-lg text-white">
+                  {selectedZone.area_ha.toFixed(1)} ha
+                </span>
+                <span className="text-[9px] text-slate-400 block mt-0.5">
+                  ~{(selectedZone.area_ha * 2.471).toFixed(1)} Acres Land
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-900/70 border border-white/5">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Stagnant Water</span>
+                <span className="font-mono font-black text-lg text-cyan-300">
+                  ~{Math.round(selectedZone.area_ha * (selectedZone.severity === 'Severe' ? 3500 : selectedZone.severity === 'Moderate' ? 1500 : 400) / 1000)}k m³
+                </span>
+                <span className="text-[9px] text-cyan-400 font-bold block mt-0.5">
+                  Dewatering Deficit
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-900/70 border border-white/5">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Ground Condition</span>
+                <span className="font-mono font-bold text-sm text-purple-300">
+                  {selectedZone.severity === 'Severe' ? 'Flooded' : selectedZone.severity === 'Moderate' ? 'Waterlogged' : 'Dry / Safe'}
+                </span>
+                <span className="text-[9px] text-purple-300/80 block mt-0.5">
+                  {selectedZone.severity === 'Severe' ? 'Standing water confirmed' : selectedZone.severity === 'Moderate' ? 'Soil saturated' : 'Normal drainage'}
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-900/70 border border-white/5">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Water Presence</span>
+                <span className="font-mono font-bold text-sm text-cyan-400">
+                  {selectedZone.ndwi && selectedZone.ndwi > 0.3 ? 'High' : selectedZone.ndwi && selectedZone.ndwi > 0 ? 'Medium' : 'Low'}
+                </span>
+                <span className="text-[9px] text-cyan-400/80 block mt-0.5">
+                  {selectedZone.ndwi && selectedZone.ndwi > 0.3 ? 'Open Standing Water' : selectedZone.ndwi && selectedZone.ndwi > 0 ? 'Surface Moisture' : 'Normal Ground'}
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-900/70 border border-white/5">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">Land Cover</span>
+                <span className="font-mono font-bold text-sm text-emerald-400">
+                  {selectedZone.ndvi && selectedZone.ndvi > 0.5 ? 'Vegetated' : 'Built-up'}
+                </span>
+                <span className="text-[9px] text-emerald-400/80 block mt-0.5">
+                  {selectedZone.ndvi && selectedZone.ndvi > 0.5 ? 'Trees / Crops (absorbs water)' : 'Roads / Buildings (run-off risk)'}
+                </span>
+              </div>
+            </div>
+
+            {/* Engineering Diagnosis & Immediate Remediation Strategy */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+              <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  <span>Why is this zone at risk?</span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {selectedAdvisory?.diagnosis || (
+                    selectedZone.severity === 'Severe'
+                      ? `Severe basin depression at ${selectedZone.elevation_m}m with flat ${selectedZone.slope_deg}° slope. Runoff accumulation exceeds gravity discharge capacity, resulting in standing surface ponding.`
+                      : selectedZone.severity === 'Moderate'
+                      ? `Moderate agricultural or urban swale retention at ${selectedZone.elevation_m}m (${selectedZone.slope_deg}° slope). Soil moisture nearing saturation threshold.`
+                      : `Elevated natural watershed ridge (${selectedZone.elevation_m}m, ${selectedZone.slope_deg}° slope) with high permeable absorption and unrestricted gravity drainage.`
+                  )}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-cyan-950/30 border border-cyan-500/30 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-300">
+                    <ShieldAlert className="w-4 h-4 text-cyan-400" />
+                    <span>Recommended Civil Remediation Action</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-rose-400">
+                    {selectedAdvisory?.priority || (selectedZone.severity === 'Severe' ? 'Priority 1 (Critical)' : selectedZone.severity === 'Moderate' ? 'Priority 2 (High)' : 'Priority 3 (Routine)')}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  {selectedAdvisory?.action_recommendation || (
+                    selectedZone.severity === 'Severe'
+                      ? 'Deploy emergency 150 HP diesel submersible dewatering pumps immediately. Clear box culverts and breach debris choking the primary storm conduit.'
+                      : selectedZone.severity === 'Moderate'
+                      ? 'Excavate 0.8m deep diversion swales, deploy mobile slurry suction pumps, and lower local water table via French drains.'
+                      : 'Maintain routine vegetative swale trimming and clear roadside gravity ditches to preserve natural infiltration.'
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 rounded-3xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-400">
+            <div className="flex items-center gap-2">
+              <Layers className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+              <span>Click any zone polygon on the map or in the directory below to isolate its critical diagnosis & action plan.</span>
+            </div>
+            {zones.find(z => z.severity === 'Severe') && (
+              <button
+                onClick={() => setSelectedZone(zones.find(z => z.severity === 'Severe') || null)}
+                className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold border border-rose-500/30 transition-all flex items-center gap-1 self-end sm:self-auto"
+              >
+                <span>Inspect Top Critical Zone</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Catchment Severity Zones Explorer (Below the Map) */}
         <div className="space-y-4 pt-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <span>Catchment Hazard Directory & Hydrological Profiles</span>
+                <span>Flood Risk Zone Directory</span>
                 <span className="text-xs px-2.5 py-0.5 rounded-full badge-neon-cyan font-mono">
                   {zones.length} Zones
                 </span>
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Multi-criteria SAR radar backscatter, digital elevation slope, and spatial pooling risk profiles.
+                All predicted flood and waterlogging zones with severity levels and recommended actions.
               </p>
             </div>
 
             {/* Filter Pills */}
-            <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs">
-              {['All', 'Severe', 'Moderate', 'Low'].map((f) => (
+            <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs flex-wrap">
+              {[
+                { label: `All (${zones.length})`, val: 'All' },
+                ...(selectedZone ? [{ label: `Selected Only (${selectedZone.zone_name.split('-')[1]?.trim() || 'Zone'})`, val: 'Selected' }] : []),
+                { label: `Severe (${severeCount})`, val: 'Severe' },
+                { label: `Moderate (${moderateCount})`, val: 'Moderate' },
+                { label: `Low / Safe (${lowCount})`, val: 'Low' },
+              ].map((f) => (
                 <button
-                  key={f}
-                  onClick={() => setZoneFilter(f)}
+                  key={f.val}
+                  onClick={() => setZoneFilter(f.val)}
                   className={`px-3 py-1 rounded-xl font-bold transition-all text-[11px] ${
-                    zoneFilter === f
+                    zoneFilter === f.val
                       ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-sm'
                       : 'text-slate-600 dark:text-slate-400 hover:text-white'
                   }`}
                 >
-                  {f === 'All' ? 'All' : f}
+                  {f.label}
                 </button>
               ))}
             </div>
@@ -929,6 +1395,21 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
         onClose={() => setIsEmergencyOpsOpen(false)}
         alerts={alerts}
         sensors={iotSensors}
+      />
+
+      {/* Advance Pre-Disaster Precaution Protocol Matrix Modal */}
+      <PrecautionProtocolModal
+        isOpen={isPrecautionModalOpen}
+        onClose={() => setIsPrecautionModalOpen(false)}
+        earlyWarningData={earlyWarningData}
+        districtName={currentArea?.name || 'Karnataka'}
+      />
+
+      {/* Citizen Lifeline & Community SOS Modal */}
+      <CitizenLifelineModal
+        isOpen={isCitizenLifelineOpen}
+        onClose={() => setIsCitizenLifelineOpen(false)}
+        districtName={currentArea?.name || 'Karnataka'}
       />
     </div>
   );

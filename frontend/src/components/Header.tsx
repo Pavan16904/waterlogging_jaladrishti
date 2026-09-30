@@ -14,7 +14,8 @@ import {
   Gauge,
   Zap,
   AlertTriangle,
-  Flame
+  Flame,
+  LifeBuoy
 } from 'lucide-react';
 import { LiveAlert } from '../types';
 
@@ -29,6 +30,7 @@ interface HeaderProps {
   onOpenModelModal?: () => void;
   onOpenEmergencyOps?: () => void;
   onOpenIoTSensors?: () => void;
+  onOpenCitizenLifeline?: () => void;
   alerts?: LiveAlert[];
 }
 
@@ -41,6 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenModelModal,
   onOpenEmergencyOps,
   onOpenIoTSensors,
+  onOpenCitizenLifeline,
   alerts = []
 }) => {
   // Rotate through alerts for the live ticker
@@ -57,9 +60,8 @@ export const Header: React.FC<HeaderProps> = ({
   const activeAlert = alerts[currentAlertIdx] || null;
 
   return (
-    <header className="glass-nav border-b px-4 lg:px-8 py-2.5 flex flex-col gap-2 sticky top-0 z-50 backdrop-blur-2xl transition-all">
-      <div className="flex items-center justify-between gap-4">
-        
+    <header className="glass-nav border-b flex flex-col sticky top-0 z-50 backdrop-blur-2xl transition-all shadow-md">
+      <div className="px-4 lg:px-8 py-2.5 flex items-center justify-between gap-4">
         {/* Brand & Platform Identity */}
         <div className="flex items-center gap-3 shrink-0">
           <div className="relative flex items-center justify-center w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 via-sky-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 border border-cyan-400/40">
@@ -72,16 +74,16 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-500 bg-clip-text text-transparent">
+              <span className="text-xl font-black tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-500 bg-clip-text text-transparent">
                 JalaDrishti AI
               </span>
               <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 uppercase tracking-wider">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
-                Real-Time Radar
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                Live Flood Early Warning
               </span>
             </div>
-            <span className="text-[10px] font-medium text-slate-400 tracking-tight hidden md:block">
-              Earth Observation SAR & Live Autonomous Hydrological Intelligence
+            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 tracking-tight hidden md:block">
+              Urban Inundation Radar & Agricultural Waterlogging Prevention System
             </span>
           </div>
         </div>
@@ -164,16 +166,19 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {onOpenModelModal && (
+          {/* Citizen Lifeline & Public SOS Hub */}
+          {onOpenCitizenLifeline && (
             <button
-              onClick={onOpenModelModal}
-              className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 font-bold border border-purple-500/30 transition-all"
-              title="View ML Model Architecture & ROC/Ablation Metrics"
+              onClick={onOpenCitizenLifeline}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 hover:from-amber-500/30 hover:to-rose-500/30 text-amber-300 dark:text-amber-200 font-black border border-amber-500/40 transition-all shadow-[0_0_15px_rgba(245,158,11,0.25)] hover:scale-105"
+              title="Citizen Lifeline: Crowdsourced Waterlogging SOS, Relief Shelters & Farmer Support"
             >
-              <BrainCircuit className="w-3.5 h-3.5" />
-              <span>AI Ensemble (99.9%)</span>
+              <LifeBuoy className="w-4 h-4 text-amber-400 animate-spin-slow" />
+              <span>Citizen SOS / Lifeline</span>
             </button>
           )}
+
+
 
           <button
             onClick={onOpenExportModal}

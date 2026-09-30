@@ -139,5 +139,12 @@ export const api = {
     if (districtName) params.set('districtName', districtName);
     const res = await axios.get(`${API_BASE}/realtime/today-rainfall?${params}`);
     return res.data;
+  },
+
+  // Early Warning & Pre-Flood Precaution Forecast
+  getEarlyWarningForecast: async (districtId: string): Promise<any> => {
+    const res = await axios.get(`${API_BASE}/realtime/early-warning/${encodeURIComponent(districtId)}`);
+    return res.data;
   }
 };
+

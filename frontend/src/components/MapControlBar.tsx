@@ -6,8 +6,7 @@ import {
   CloudRain, 
   Play, 
   RefreshCw, 
-  Cpu, 
-  Sparkles 
+  Cpu,
 } from 'lucide-react';
 
 interface MapControlBarProps {
@@ -24,6 +23,7 @@ interface MapControlBarProps {
   setModelType: (val: string) => void;
   onRunAnalysis: () => void;
   isAnalyzing: boolean;
+  liveRainfallData?: any; // Live today's rainfall from Open-Meteo
 }
 
 export const MapControlBar: React.FC<MapControlBarProps> = ({
@@ -39,8 +39,11 @@ export const MapControlBar: React.FC<MapControlBarProps> = ({
   modelType,
   setModelType,
   onRunAnalysis,
-  isAnalyzing
+  isAnalyzing,
+  liveRainfallData,
 }) => {
+  const isLive = liveRainfallData && !liveRainfallData.fallback;
+
   return (
     <div className="px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 backdrop-blur-md flex flex-wrap items-center justify-between gap-4 text-xs">
       <div className="flex flex-wrap items-center gap-3">
@@ -61,7 +64,7 @@ export const MapControlBar: React.FC<MapControlBarProps> = ({
           </select>
         </div>
 
-        {/* Date Window */}
+        {/* Date Window — always shows today */}
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl glass-card">
           <Calendar className="w-4 h-4 text-sky-500" />
           <span className="text-slate-500 dark:text-slate-400">Pre:</span>
@@ -79,25 +82,52 @@ export const MapControlBar: React.FC<MapControlBarProps> = ({
             onChange={(e) => setPostEventDate(e.target.value)}
             className="bg-transparent text-slate-800 dark:text-slate-200 font-mono text-[11px] focus:outline-none cursor-pointer"
           />
+          {/* TODAY badge */}
+          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 text-[9px] font-black border border-emerald-500/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            TODAY
+          </span>
         </div>
 
-        {/* Rainfall Intensity Slider */}
-        <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl glass-card">
-          <CloudRain className="w-4 h-4 text-blue-500" />
-          <span className="text-slate-500 dark:text-slate-400">Precipitation:</span>
-          <input
-            type="range"
-            min={0}
-            max={180}
-            step={5}
-            value={rainfallMm}
-            onChange={(e) => setRainfallMm(parseFloat(e.target.value))}
-            className="w-20 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-          />
-          <span className="font-mono font-bold text-cyan-600 dark:text-cyan-400 w-12 text-right">{rainfallMm} mm</span>
+        {/* Rainfall Intensity — Real-Time Live Widget (Automatic) */}
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all ${
+          isLive
+            ? 'bg-cyan-500/10 border border-cyan-500/30 glass-card'
+            : 'glass-card'
+        }`}
+        title={isLive ? `Live from Open-Meteo: ${liveRainfallData.todayRainfallMm} mm today (Auto-Monitored)` : 'Automatic real-time precipitation tracking'}
+        >
+          <div className="relative">
+            <CloudRain className={`w-4 h-4 ${isLive ? 'text-cyan-400' : 'text-blue-500'}`} />
+            {isLive && liveRainfallData.todayRainfallMm > 0 && (
+              <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+            )}
+          </div>
+          <span className="text-slate-500 dark:text-slate-400 text-[11px]">Rainfall:</span>
+
+          <div className="flex items-center gap-1.5 leading-none">
+            <span className="font-mono font-black text-cyan-600 dark:text-cyan-400 tabular-nums text-xs">
+              {rainfallMm} mm
+            </span>
+            {isLive ? (
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 text-[9px] font-black border border-cyan-500/30">
+                <span className="w-1 h-1 rounded-full bg-cyan-400 animate-pulse"></span>
+                AUTO LIVE
+              </span>
+            ) : (
+              <span className="px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-400 text-[9px] font-semibold">
+                AUTO
+              </span>
+            )}
+          </div>
+          {isLive && (
+            <span className="text-[10px] font-bold" style={{ color: liveRainfallData.riskColor }}>
+              · {liveRainfallData.riskLevel} Risk
+            </span>
+          )}
         </div>
 
-        {/* Automated ML Pipeline Indicator (no manual toggle required) */}
+        {/* AI Engine Indicator */}
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl glass-card text-[11px] font-semibold text-slate-700 dark:text-slate-300">
           <Cpu className="w-3.5 h-3.5 text-purple-500" />
           <span className="text-slate-500 dark:text-slate-400">AI Engine:</span>

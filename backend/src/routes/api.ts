@@ -12,7 +12,8 @@ import {
   updatePumpActuator, 
   getLiveAlerts, 
   getRealtimeNowcast,
-  getTodayRainfall
+  getTodayRainfall,
+  getEarlyWarningForecast
 } from '../controllers/realtimeController.js';
 
 const router = Router();
@@ -53,5 +54,6 @@ router.post('/realtime/pump-actuator', updatePumpActuator);
 router.get('/realtime/live-alerts', getLiveAlerts);
 router.get('/realtime/nowcast/:districtId', getRealtimeNowcast);
 router.get('/realtime/today-rainfall', getTodayRainfall);
+router.get('/realtime/early-warning/:districtId', getEarlyWarningForecast);
 
 export default router;

@@ -10,6 +10,7 @@ import { ModelEvaluationModal } from './components/ModelEvaluationModal';
 import { ExportReportModal } from './components/ExportReportModal';
 import { LiveIoTSensorsDrawer } from './components/LiveIoTSensorsDrawer';
 import { EmergencyOpsModal } from './components/EmergencyOpsModal';
+import { CitizenLifelineModal } from './components/CitizenLifelineModal';
 import { AnimatePresence, motion } from 'framer-motion';
 
 export function App() {
@@ -57,6 +58,10 @@ export function App() {
   // Live Rainfall Data (from Open-Meteo real-time)
   const [liveRainfallData, setLiveRainfallData] = useState<any>(null);
 
+  // Map real-time state
+  const [mapLastUpdated, setMapLastUpdated] = useState<Date | null>(null);
+  const [isAutoRefreshing, setIsAutoRefreshing] = useState<boolean>(false);
+
   // Real-Time Telemetry State
   const [radarMeta, setRadarMeta] = useState<RadarMeta | null>(null);
   const [iotSensors, setIoTSensors] = useState<IoTSensor[]>([]);
@@ -70,6 +75,7 @@ export function App() {
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isIoTDrawerOpen, setIsIoTDrawerOpen] = useState<boolean>(false);
   const [isEmergencyOpsOpen, setIsEmergencyOpsOpen] = useState<boolean>(false);
+  const [isCitizenLifelineOpen, setIsCitizenLifelineOpen] = useState<boolean>(false);
 
   // Initial Load: Fetch Study Areas, Radar metadata, IoT Telemetry & Alerts
   useEffect(() => {
@@ -99,14 +105,26 @@ export function App() {
     };
   }, []);
 
+  // Auto-refresh map every 5 minutes with live rainfall → re-analysis
+  useEffect(() => {
+    const mapRefreshInterval = setInterval(() => {
+      if (currentArea) {
+        autoRefreshMap(currentArea);
+      }
+    }, 5 * 60 * 1000);
+    return () => clearInterval(mapRefreshInterval);
+  }, [currentArea]);
+
   // When selectedAreaId changes, fetch latest analysis AND live rainfall
+  // then auto-run analysis with live rainfall to update map zones
   useEffect(() => {
     if (selectedAreaId) {
       const area = studyAreas.find((a) => a.id === selectedAreaId) || null;
       setCurrentArea(area);
       loadLatestAnalysis(selectedAreaId);
       if (area) {
-        fetchLiveRainfall(area.center_lat, area.center_lng, area.name);
+        // Fetch live rain, then immediately run analysis with it to update map
+        fetchLiveRainfall(area.center_lat, area.center_lng, area.name, true);
       }
     }
   }, [selectedAreaId, studyAreas]);
@@ -143,18 +161,63 @@ export function App() {
   };
 
   // Fetch live today's rainfall from Open-Meteo for the selected area
-  const fetchLiveRainfall = async (lat: number, lng: number, name: string) => {
+  // and automatically trigger ML re-analysis so map zones reflect live rain
+  const fetchLiveRainfall = async (lat: number, lng: number, name: string, runAnalysisAfter = false) => {
     try {
       const data = await api.getTodayRainfall(lat, lng, name);
       if (data && data.success) {
         setLiveRainfallData(data);
         // Auto-update rainfall slider to today's actual measurement
-        if (data.todayRainfallMm > 0) {
-          setRainfallMm(Math.round(data.todayRainfallMm * 10) / 10);
+        const liveRain = data.todayRainfallMm > 0 ? Math.round(data.todayRainfallMm * 10) / 10 : 10;
+        setRainfallMm(liveRain);
+
+        if (runAnalysisAfter) {
+          // Re-run ML analysis with live rainfall so map zones update
+          await runLiveAnalysis(liveRain);
         }
       }
     } catch (err) {
       console.warn('Live rainfall fetch warning:', err);
+    }
+  };
+
+  // Run a silent ML analysis update (no spinner shown to user)
+  const runLiveAnalysis = async (liveRainMm: number) => {
+    try {
+      const res = await api.runAnalysis({
+        studyAreaId: selectedAreaId,
+        preEventDate: getPreEventStr(),
+        postEventDate: getTodayStr(),
+        rainfallMm: liveRainMm,
+        modelType: 'random_forest'
+      });
+      if (res && res.runId) {
+        await loadLatestAnalysis(selectedAreaId);
+        setMapLastUpdated(new Date());
+      }
+    } catch (err) {
+      console.warn('Live map analysis update warning:', err);
+    }
+  };
+
+  // Full auto-refresh: live rain → re-analysis → update map zones
+  const autoRefreshMap = async (area: { center_lat: number; center_lng: number; name: string; id: string }) => {
+    setIsAutoRefreshing(true);
+    try {
+      await fetchLiveRainfall(area.center_lat, area.center_lng, area.name, true);
+    } finally {
+      setIsAutoRefreshing(false);
+    }
+  };
+
+  // Manual refresh trigger (user clicks refresh on map)
+  const handleManualMapRefresh = async () => {
+    if (!currentArea || isAutoRefreshing || isAnalyzing) return;
+    setIsAutoRefreshing(true);
+    try {
+      await fetchLiveRainfall(currentArea.center_lat, currentArea.center_lng, currentArea.name, true);
+    } finally {
+      setIsAutoRefreshing(false);
     }
   };
 
@@ -220,6 +283,7 @@ export function App() {
         onOpenModelModal={() => setIsModelOpen(true)}
         onOpenEmergencyOps={() => setIsEmergencyOpsOpen(true)}
         onOpenIoTSensors={() => setIsIoTDrawerOpen(true)}
+        onOpenCitizenLifeline={() => setIsCitizenLifelineOpen(true)}
         alerts={liveAlerts}
       />
 
@@ -256,6 +320,9 @@ export function App() {
                 alerts={liveAlerts}
                 onRefreshTelemetry={loadRealtimeTelemetry}
                 liveRainfallData={liveRainfallData}
+                mapLastUpdated={mapLastUpdated}
+                isAutoRefreshing={isAutoRefreshing}
+                onManualMapRefresh={handleManualMapRefresh}
               />
             </motion.div>
           )}
@@ -313,60 +380,55 @@ export function App() {
         </AnimatePresence>
       </main>
 
-      {/* Luxury Platform Telemetry & Real-Time Data Provenance Footer */}
-      <footer className="glass-nav border-t border-slate-200 dark:border-slate-800/80 px-4 md:px-8 py-3.5 text-xs text-slate-500 dark:text-slate-400 mt-auto">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          {/* Telemetry Status Badges */}
-          <div className="flex flex-wrap items-center gap-3">
+      {/* Footer */}
+      <footer className="glass-nav border-t border-slate-200 dark:border-slate-800/80 px-4 md:px-8 py-3 text-xs text-slate-500 dark:text-slate-400 mt-auto">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+          {/* Live Data Status */}
+          <div className="flex flex-wrap items-center gap-2.5">
             <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold text-[11px] border border-emerald-500/20">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              Sentinel-1 SAR Active
+              Satellite Imagery Live
             </span>
 
             <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-semibold text-[11px] border border-cyan-500/20">
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
-              RainViewer Doppler Radar Live
+              Live Doppler Radar
             </span>
 
             <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 font-semibold text-[11px] border border-sky-500/20">
               <span className="w-2 h-2 rounded-full bg-sky-500"></span>
-              {iotSensors.length} IoT Flood Sump Nodes
-            </span>
-
-            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 font-semibold text-[11px] border border-purple-500/20">
-              <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-              AI Ensemble (99.95%)
+              {iotSensors.length} Water Level Sensors
             </span>
           </div>
 
-          {/* Platform Identity & Navigation */}
+          {/* Quick Links */}
           <div className="flex items-center gap-4 text-[11px]">
             <span className="font-bold text-slate-700 dark:text-slate-300">
-              JalaDrishti AI &mdash; Real-Time Karnataka Flood Intelligence
+              JalaDrishti AI
             </span>
             <button
               onClick={() => setIsIoTDrawerOpen(true)}
               className="text-sky-500 hover:underline font-bold"
             >
-              IoT Gauges
+              Sensor Dashboard
             </button>
             <button
               onClick={() => setIsEmergencyOpsOpen(true)}
               className="text-rose-500 hover:underline font-bold"
             >
-              Emergency EOC
+              Emergency Response
             </button>
             <button
-              onClick={() => setIsModelOpen(true)}
-              className="text-cyan-600 dark:text-cyan-400 hover:underline font-semibold"
+              onClick={() => setIsCitizenLifelineOpen(true)}
+              className="text-amber-500 hover:underline font-bold flex items-center gap-1"
             >
-              Model Architecture
+              <span>Citizen SOS / Shelters</span>
             </button>
             <button
               onClick={() => setIsExportOpen(true)}
               className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-semibold"
             >
-              Export PDF
+              Export Report
             </button>
           </div>
         </div>
@@ -386,6 +448,13 @@ export function App() {
         onClose={() => setIsEmergencyOpsOpen(false)}
         alerts={liveAlerts}
         sensors={iotSensors}
+      />
+
+      {/* Global Citizen Lifeline, Crowdsourced SOS & Shelter Center */}
+      <CitizenLifelineModal
+        isOpen={isCitizenLifelineOpen}
+        onClose={() => setIsCitizenLifelineOpen(false)}
+        districtName={selectedDistrict || currentArea?.name || 'Bengaluru Urban'}
       />
 
       {/* Official Engineering & PDF Export Modal */}
