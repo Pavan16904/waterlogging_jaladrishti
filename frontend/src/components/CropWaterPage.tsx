@@ -40,6 +40,7 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLanguage } from '../context/LanguageContext';
+import { KARNATAKA_DISTRICT_AGRI, getDistrictProfile } from '../data/karnatakaDistrictAgri';
 
 interface CropWaterPageProps {
   initialDistrict?: string;
@@ -60,12 +61,12 @@ const CATEGORY_ICONS: Record<string, string> = {
 const POPULAR_PRESETS = [
   { name: 'Finger Millet (Ragi)', kn: 'ರಾಗಿ (Ragi)', icon: '🌾', category: 'Millets' },
   { name: 'Tomato', kn: 'ಟೊಮೇಟೊ (Tomato)', icon: '🍅', category: 'Vegetables' },
-  { name: 'Paddy (Rice)', kn: 'ಭತ್ತ (Paddy)', icon: '🌾', category: 'Cereals' },
+  { name: 'Rice (Paddy)', kn: 'ಭತ್ತ (Paddy)', icon: '🌾', category: 'Cereals' },
   { name: 'Maize (Corn)', kn: 'ಮೆಕ್ಕೆಜೋಳ (Maize)', icon: '🌽', category: 'Cereals' },
   { name: 'Groundnut (Peanut)', kn: 'ಕಡಲೆಕಾಯಿ / ಶೇಂಗಾ', icon: '🌱', category: 'Oilseeds' },
   { name: 'Sugarcane', kn: 'ಕಬ್ಬು (Sugarcane)', icon: '🎋', category: 'Commercial' },
   { name: 'Onion', kn: 'ಈರುಳ್ಳಿ (Onion)', icon: '🧅', category: 'Vegetables' },
-  { name: 'Coffee (Robusta)', kn: 'ಕಾಫಿ (Coffee)', icon: '☕', category: 'Spices' },
+  { name: 'Coffee (Arabica/Robusta)', kn: 'ಕಾಫಿ (Coffee)', icon: '☕', category: 'Spices' },
   { name: 'Mango', kn: 'ಮಾವಿನ ಹಣ್ಣು (Mango)', icon: '🥭', category: 'Fruits' },
   { name: 'Chilli (Byadgi)', kn: 'ಬ್ಯಾಡಗಿ ಮೆಣಸಿನಕಾಯಿ', icon: '🌶️', category: 'Spices' }
 ];
@@ -81,11 +82,15 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
   const [soilDetails, setSoilDetails] = useState<Record<string, any>>({});
   const [districts, setDistricts] = useState<Record<string, any>>({});
 
+  // District-Smart Isolation Filter (defaults to true: strictly show only crops & soils grown in the selected district)
+  const [filterByDistrict, setFilterByDistrict] = useState<boolean>(true);
+
   // Form State
+  const initialProfile = getDistrictProfile(initialDistrict);
   const [selectedDistrict, setSelectedDistrict] = useState<string>(initialDistrict);
-  const [selectedCrop, setSelectedCrop] = useState<string>('Finger Millet (Ragi)');
+  const [selectedCrop, setSelectedCrop] = useState<string>(initialProfile.defaultCrop);
   const [daysSincePlanting, setDaysSincePlanting] = useState<number>(45);
-  const [selectedSoil, setSelectedSoil] = useState<string>('Red Sandy Loam');
+  const [selectedSoil, setSelectedSoil] = useState<string>(initialProfile.defaultSoil);
   const [fieldAreaHa, setFieldAreaHa] = useState<number>(2.0);
   const [cropSearch, setCropSearch] = useState<string>('');
 
@@ -107,13 +112,68 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
       setSoilDetails(catalog.soil_details || {});
       setDistricts(catalog.karnataka_districts || {});
 
-      // Pick default crop
-      if (catalog.crops && catalog.crops.length > 0) {
-        const defaultCrop = catalog.crops.find((c: string) => c.includes('Ragi') || c.includes('Paddy') || c.includes('Tomato')) || catalog.crops[0];
-        setSelectedCrop(defaultCrop);
+      // Automatically sync with initial district's primary soil and crop
+      const profile = getDistrictProfile(initialDistrict);
+      if (profile) {
+        setSelectedSoil(profile.defaultSoil);
+        setSelectedCrop(profile.defaultCrop);
       }
     } catch (err) {
       console.error('Failed to load crop catalog:', err);
+    }
+  };
+
+  // Current district agro-profile
+  const currentDistrictProfile = useMemo(() => {
+    return getDistrictProfile(selectedDistrict);
+  }, [selectedDistrict]);
+
+  // Soils strictly available for this district (or all if filter toggled off)
+  const availableSoils = useMemo(() => {
+    if (filterByDistrict && currentDistrictProfile?.soils?.length > 0) {
+      return currentDistrictProfile.soils;
+    }
+    return soils.length > 0 ? soils : ['Red Sandy Loam'];
+  }, [filterByDistrict, currentDistrictProfile, soils]);
+
+  // Base list of crops for this district (or all if filter toggled off)
+  const baseDistrictCrops = useMemo(() => {
+    if (filterByDistrict && currentDistrictProfile?.crops?.length > 0) {
+      return currentDistrictProfile.crops;
+    }
+    return crops;
+  }, [filterByDistrict, currentDistrictProfile, crops]);
+
+  // Filter crops based on category and search query
+  const filteredCrops = useMemo(() => {
+    return baseDistrictCrops.filter((crop) => {
+      const matchesSearch = crop.toLowerCase().includes(cropSearch.toLowerCase());
+      const matchesCategory = selectedCategory === 'All' || (categories[selectedCategory] && categories[selectedCategory].includes(crop));
+      return matchesSearch && matchesCategory;
+    });
+  }, [baseDistrictCrops, cropSearch, selectedCategory, categories]);
+
+  // Automatically adapt selected soil if current selection is not valid for this district
+  useEffect(() => {
+    if (availableSoils.length > 0 && !availableSoils.includes(selectedSoil)) {
+      setSelectedSoil(availableSoils[0]);
+    }
+  }, [availableSoils, selectedSoil]);
+
+  // Automatically adapt selected crop if current selection is not valid for this district
+  useEffect(() => {
+    if (filteredCrops.length > 0 && !filteredCrops.includes(selectedCrop)) {
+      setSelectedCrop(filteredCrops[0]);
+    }
+  }, [filteredCrops, selectedCrop]);
+
+  // Handle District Change: automatically selects the right soil & plant for the district!
+  const handleDistrictSelect = (districtName: string) => {
+    setSelectedDistrict(districtName);
+    const profile = getDistrictProfile(districtName);
+    if (profile) {
+      setSelectedSoil(profile.defaultSoil);
+      setSelectedCrop(profile.defaultCrop);
     }
   };
 
@@ -142,25 +202,13 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
     }
   };
 
-  const handleDistrictSelect = (districtName: string) => {
-    setSelectedDistrict(districtName);
-    const dist = districts[districtName];
-    if (dist) {
-      if (dist.default_soil) setSelectedSoil(dist.default_soil);
-      if (dist.primary_crops && dist.primary_crops.length > 0) {
-        setSelectedCrop(dist.primary_crops[0]);
-      }
-    }
-  };
-
-  // Filter crops based on category and search query
-  const filteredCrops = useMemo(() => {
-    return crops.filter((crop) => {
-      const matchesSearch = crop.toLowerCase().includes(cropSearch.toLowerCase());
-      const matchesCategory = selectedCategory === 'All' || (categories[selectedCategory] && categories[selectedCategory].includes(crop));
-      return matchesSearch && matchesCategory;
-    });
-  }, [crops, cropSearch, selectedCategory, categories]);
+  // Filter popular presets to those grown in the selected district when filterByDistrict is active
+  const districtPresets = useMemo(() => {
+    if (!filterByDistrict || !currentDistrictProfile) return POPULAR_PRESETS;
+    const set = new Set(currentDistrictProfile.crops);
+    const matched = POPULAR_PRESETS.filter(p => set.has(p.name));
+    return matched.length > 0 ? matched : POPULAR_PRESETS.slice(0, 5);
+  }, [filterByDistrict, currentDistrictProfile]);
 
   // Chart data from 7-day forecast
   const chartData = useMemo(() => {
@@ -275,12 +323,17 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
 
       {/* Popular 1-Click Crop Presets Bar */}
       <div className="space-y-2">
-        <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-          {t('quickFarmerPresets', 'Quick Farmer Presets:')}
-        </span>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            Quick Presets for {currentDistrictProfile.name}:
+          </span>
+          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+            {filterByDistrict ? `🎯 District Crops (${districtPresets.length})` : '🌐 All Presets'}
+          </span>
+        </div>
         <div className="flex flex-wrap gap-2">
-          {POPULAR_PRESETS.map((preset) => (
+          {districtPresets.map((preset) => (
             <button
               key={preset.name}
               onClick={() => setSelectedCrop(preset.name)}
@@ -291,7 +344,7 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
               }`}
             >
               <span>{preset.icon}</span>
-              <span>{lang === 'kn' ? preset.kn : preset.name}</span>
+              <span>{preset.name}</span>
             </button>
           ))}
         </div>
@@ -336,9 +389,14 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
 
           {/* Soil Type Dropdown */}
           <div>
-            <label className="text-xs font-bold text-slate-600 dark:text-slate-400 block mb-1.5">
-              Soil Type in Farm Plot:
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400">
+                Soil Type in Farm Plot:
+              </label>
+              <span className="text-[10px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+                {availableSoils.length} soils in {currentDistrictProfile.name}
+              </span>
+            </div>
             <div className="flex items-center gap-2 p-3 rounded-2xl glass-card border border-slate-200 dark:border-slate-700/80">
               <Layers className="w-4 h-4 text-amber-500 shrink-0" />
               <select
@@ -346,9 +404,9 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
                 onChange={(e) => setSelectedSoil(e.target.value)}
                 className="w-full bg-transparent text-xs font-bold text-slate-900 dark:text-white focus:outline-none cursor-pointer"
               >
-                {soils.map((s) => (
+                {availableSoils.map((s) => (
                   <option key={s} value={s} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                    {s}
+                    {s} {s === currentDistrictProfile.defaultSoil ? '★ (Predominant)' : ''}
                   </option>
                 ))}
               </select>
@@ -365,14 +423,25 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
           </div>
         </div>
 
-        {/* Step 2: Crop Selector (100+ Crops) */}
+        {/* Step 2: Crop Selector (District-Specific or Full Catalog) */}
         <div className="rounded-3xl glass-card p-6 border border-slate-200 dark:border-slate-700/60 shadow-md space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-1">
             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
               <span className="w-6 h-6 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs font-black">2</span>
               <span>Crop Variety</span>
             </div>
-            <span className="text-[10px] text-emerald-500 font-semibold">{filteredCrops.length} Available</span>
+            <button
+              type="button"
+              onClick={() => setFilterByDistrict(!filterByDistrict)}
+              className={`px-2.5 py-0.5 rounded-full text-[10px] font-black transition-all flex items-center gap-1 border ${
+                filterByDistrict
+                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/40 shadow-sm'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-transparent'
+              }`}
+              title={filterByDistrict ? "Showing only crops grown in this district. Click to show all Karnataka crops." : "Click to isolate only crops grown in this district."}
+            >
+              {filterByDistrict ? `🎯 ${currentDistrictProfile.name} (${filteredCrops.length})` : `🌐 All (${crops.length})`}
+            </button>
           </div>
 
           {/* Category Filter Pills */}
@@ -398,7 +467,7 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search across 100+ crops..."
+                placeholder={filterByDistrict ? `Search crops in ${currentDistrictProfile.name}...` : "Search across 100+ crops..."}
                 value={cropSearch}
                 onChange={(e) => setCropSearch(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 rounded-2xl glass-card text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
