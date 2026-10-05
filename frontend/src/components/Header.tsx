@@ -9,12 +9,13 @@ import {
   Sun, 
   Moon,
   Gauge,
-  LifeBuoy
+  LifeBuoy,
+  Award
 } from 'lucide-react';
 import { LiveAlert } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 
-export type MainTabType = 'map' | 'weather' | 'crop-water' | 'drainage';
+export type MainTabType = 'map' | 'weather' | 'crop-water' | 'drainage' | 'overview';
 
 interface HeaderProps {
   activeTab: MainTabType;
@@ -132,6 +133,20 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <ShieldAlert className="w-4 h-4 text-rose-400" />
             <span>{t('navDrainage', 'Drainage Actions')}</span>
+          </button>
+
+          <button
+            id="nav-overview"
+            onClick={() => setActiveTab('overview')}
+            className={`flex items-center gap-2 px-3.5 md:px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all duration-200 ${
+              activeTab === 'overview'
+                ? 'bg-gradient-to-r from-violet-500/20 to-purple-500/20 text-violet-400 border border-violet-500/40 shadow-[0_0_15px_rgba(139,92,246,0.25)]'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+            title="Project Overview — Innovation, Metrics & Budget"
+          >
+            <Award className="w-4 h-4 text-violet-400" />
+            <span>Overview</span>
           </button>
         </nav>
 

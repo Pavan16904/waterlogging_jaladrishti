@@ -255,14 +255,23 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
   }, [selectedDistrict, selectedCrop, daysSincePlanting, selectedSoil, fieldAreaHa]);
 
   const computeAdvisory = async () => {
+    // Input validation — guard against edge cases that would crash the ML service
+    const days = Number(daysSincePlanting);
+    const area = Number(fieldAreaHa);
+    const totalDays = currentCropMetadata.totalDuration || 365;
+
+    if (!selectedCrop || !selectedSoil) return;
+    if (isNaN(days) || days < 1 || days > totalDays * 1.5) return;
+    if (isNaN(area) || area <= 0 || area > 10000) return;
+
     setIsCalculating(true);
     try {
       const data = await api.calculateIrrigation({
         cropName: selectedCrop,
-        daysSincePlanting: Number(daysSincePlanting),
+        daysSincePlanting: Math.max(1, Math.round(days)),
         soilType: selectedSoil,
         districtName: selectedDistrict,
-        fieldAreaHa: Number(fieldAreaHa)
+        fieldAreaHa: Math.max(0.01, area)
       });
       setResult(data);
     } catch (err) {
@@ -271,6 +280,7 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
       setIsCalculating(false);
     }
   };
+
 
   // Filter popular presets to those grown in the selected district when filterByDistrict is active
   const districtPresets = useMemo(() => {

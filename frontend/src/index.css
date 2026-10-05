@@ -209,7 +209,7 @@
   animation: radar-sweep 4s linear infinite;
 }
 
-/* Official Print Stylesheet for KSCST Government Work Orders */
+/* Official Print Stylesheet for Printed Work Orders & Reports */
 @media print {
   body {
     background: #ffffff !important;

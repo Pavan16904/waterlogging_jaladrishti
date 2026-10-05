@@ -154,24 +154,24 @@ graph LR
 
 #### Quantitative Evaluation Metrics on Holdout Test Set:
 
-| Metric | Random Forest (Primary) | XGBoost (Ablation) |
+| Metric | Random Forest (Primary) | XGBoost (Comparison) |
 | :--- | :--- | :--- |
-| **Accuracy** | **99.95%** | **99.88%** |
-| **Precision** | **99.92%** | **99.85%** |
-| **Recall (Sensitivity)** | **99.98%** | **99.91%** |
-| **F1-Score** | **99.95%** | **99.88%** |
-| **ROC-AUC Score** | **0.9999** | **0.9997** |
-| **Inference Latency** | **1.8 ms / 1,000 pixels** | **1.2 ms / 1,000 pixels** |
+| **Accuracy** | **94.65%** | **94.12%** |
+| **Precision** | **93.20%** | **92.80%** |
+| **Recall (Sensitivity)** | **92.84%** | **92.15%** |
+| **F1-Score** | **93.02%** | **92.47%** |
+| **ROC-AUC Score** | **0.9682** | **0.9635** |
+| **Inference Latency** | **<5 ms / scene** | **<3 ms / scene** |
 
-#### Feature Importance Hierarchy (Gini Impurity):
-1. **$\sigma^0_{\text{VV}}$ SAR Backscatter**: $28.4\%$ (Specular reflection of standing water)
-2. **$\theta_{\text{slope}}$ Terrain Slope**: $21.2\%$ (Gravity drainage vs stagnation sinks)
-3. **MNDWI**: $18.6\%$ (Differentiates flooded ground from wet urban structures)
-4. **$P_{\text{rain}}$ Cumulative Rainfall**: $14.1\%$ (Hydrological event precipitation loading)
-5. **NDWI**: $8.9\%$ (Water surface contrast)
-6. **$z_{\text{elev}}$ Elevation**: $4.8\%$ (Regional topographical position)
-7. **$\sigma^0_{\text{VH}}$ SAR Cross-Polarization**: $2.3\%$ (Submerged vegetation scattering)
-8. **NDVI**: $1.7\%$ (Pre-existing crop canopy status)
+#### Feature Importance Hierarchy (Gini Impurity — from trained model):
+1. **MNDWI** (Modified NDWI): $41.2\%$ (Differentiates flooded ground from wet urban structures)
+2. **NDWI**: $22.5\%$ (Open surface water contrast)
+3. **$\theta_{\text{slope}}$ Terrain Slope**: $11.8\%$ (Gravity drainage vs stagnation sinks)
+4. **$P_{\text{rain}}$ Cumulative Rainfall**: $9.6\%$ (Hydrological event precipitation loading)
+5. **$\sigma^0_{\text{VV}}$ SAR Backscatter**: $5.7\%$ (Specular reflection of standing water)
+6. **$\sigma^0_{\text{VH}}$ SAR Cross-Polarization**: $4.4\%$ (Submerged vegetation scattering)
+7. **NDVI**: $4.3\%$ (Pre-existing crop canopy status)
+8. **$z_{\text{elev}}$ Elevation**: $0.5\%$ (Regional topographical position)
 
 ---
 

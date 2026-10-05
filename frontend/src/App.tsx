@@ -13,6 +13,7 @@ import { EmergencyOpsModal } from './components/EmergencyOpsModal';
 import { CitizenLifelineModal } from './components/CitizenLifelineModal';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLanguage } from './context/LanguageContext';
+import { ProjectOverviewPage } from './components/ProjectOverviewPage';
 
 export function App() {
   const { t } = useLanguage();
@@ -380,6 +381,19 @@ export function App() {
                 onOpenExportModal={() => setIsExportOpen(true)}
                 onNavigateToMap={() => setActiveTab('map')}
               />
+            </motion.div>
+          )}
+
+          {activeTab === 'overview' && (
+            <motion.div
+              key="overview-page"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="flex-1 flex flex-col"
+            >
+              <ProjectOverviewPage />
             </motion.div>
           )}
         </AnimatePresence>
