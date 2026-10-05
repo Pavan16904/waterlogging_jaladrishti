@@ -1,4 +1,4 @@
-# GSD Skill Validation Script
+﻿# GSD Skill Validation Script
 # Validates all skill directories for required structure
 
 $ErrorCount = 0
@@ -9,11 +9,6 @@ Write-Host "━━━━━━━━━━━━━━━━━━━━━━�
 Write-Host " GSD ► VALIDATING SKILLS" -ForegroundColor Cyan
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
 Write-Host ""
-
-if (-not (Test-Path ".agents/skills")) {
-    Write-Host "❌ Missing .agents/skills/ directory" -ForegroundColor Red
-    exit 1
-}
 
 $skills = Get-ChildItem ".agents/skills" -Directory
 

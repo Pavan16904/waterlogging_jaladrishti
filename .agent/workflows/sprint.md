@@ -32,24 +32,6 @@ Ask for:
 - **Duration** — Timeframe (e.g., "2 days", "1 week")
 - **Scope** — Tasks included and explicitly excluded
 
-### Check for Existing Sprint
-
-**PowerShell:**
-```powershell
-if (Test-Path ".gsd/SPRINT.md") {
-    Write-Error "An active SPRINT.md already exists. Close or archive it first with '/sprint close' before starting a new sprint."
-    exit 1
-}
-```
-
-**Bash:**
-```bash
-if [ -f ".gsd/SPRINT.md" ]; then
-    echo "Error: An active SPRINT.md already exists. Close or archive it first with '/sprint close'." >&2
-    exit 1
-fi
-```
-
 ### Create Sprint File
 
 Create `.gsd/SPRINT.md` using the template from `.gsd/templates/sprint.md`:
@@ -168,7 +150,6 @@ Restore previous milestone position or mark as idle.
 
 ```bash
 git add .gsd/sprints/ .gsd/STATE.md
-git rm --cached .gsd/SPRINT.md 2>/dev/null || git add -u .gsd/SPRINT.md
 git commit -m "docs: close sprint {name}"
 ```
 

@@ -370,14 +370,14 @@ After each task completes, run these as **separate commands**, one per invocatio
 
 **PowerShell:**
 ```powershell
-git add <files changed for this task>
+git add -A
 git commit -m "feat({phase}-{plan}): {task description}"
 git log -1 --oneline
 ```
 
 **Bash:**
 ```bash
-git add <files changed for this task>
+git add -A
 git commit -m "feat({phase}-{plan}): {task description}"
 git log -1 --oneline
 ```

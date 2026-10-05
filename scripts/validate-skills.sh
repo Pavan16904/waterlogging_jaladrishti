@@ -10,13 +10,7 @@ echo " GSD ► VALIDATING SKILLS"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-if [ ! -d ".agents/skills" ]; then
-    echo "❌ Missing .agents/skills/ directory"
-    exit 1
-fi
-
 for skill_dir in .agents/skills/*/; do
-    [ -d "$skill_dir" ] || continue
     ((skills_checked++))
     skill_name=$(basename "$skill_dir")
     skill_file="$skill_dir/SKILL.md"

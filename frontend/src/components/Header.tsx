@@ -9,13 +9,12 @@ import {
   Sun, 
   Moon,
   Gauge,
-  LifeBuoy,
-  Award
+  LifeBuoy
 } from 'lucide-react';
 import { LiveAlert } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 
-export type MainTabType = 'map' | 'weather' | 'crop-water' | 'drainage' | 'overview';
+export type MainTabType = 'map' | 'weather' | 'crop-water' | 'drainage';
 
 interface HeaderProps {
   activeTab: MainTabType;
@@ -58,11 +57,10 @@ export const Header: React.FC<HeaderProps> = ({
 
   /* ─── Nav tab helper ──────────────────────────────────────── */
   const tabs = [
-    { id: 'map'        as const, label: t('navFloodMap', 'Flood Map'),         Icon: Map,        color: 'text-sky-500  dark:text-sky-400'      },
-    { id: 'weather'    as const, label: t('navWeather',  'Weather'),            Icon: CloudSun,   color: 'text-blue-500 dark:text-blue-400'     },
-    { id: 'crop-water' as const, label: t('navCropWater','Crop Advisor'),       Icon: Sprout,     color: 'text-emerald-500 dark:text-emerald-400'},
-    { id: 'drainage'   as const, label: t('navDrainage', 'Drainage'),           Icon: ShieldAlert,color: 'text-rose-500  dark:text-rose-400'    },
-    { id: 'overview'   as const, label: 'Overview',                             Icon: Award,      color: 'text-violet-500 dark:text-violet-400' },
+    { id: 'map'        as const, label: t('navFloodMap', 'Flood Map'),   Icon: Map,        color: 'text-sky-500  dark:text-sky-400'       },
+    { id: 'weather'    as const, label: t('navWeather',  'Weather'),      Icon: CloudSun,   color: 'text-blue-500 dark:text-blue-400'      },
+    { id: 'crop-water' as const, label: t('navCropWater','Crop Advisor'), Icon: Sprout,     color: 'text-emerald-500 dark:text-emerald-400' },
+    { id: 'drainage'   as const, label: t('navDrainage', 'Drainage'),     Icon: ShieldAlert,color: 'text-rose-500  dark:text-rose-400'     },
   ];
 
   return (

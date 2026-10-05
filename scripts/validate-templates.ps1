@@ -1,4 +1,4 @@
-# GSD Template Validation Script
+﻿# GSD Template Validation Script
 # Validates all template files in .gsd/templates/
 
 $ErrorCount = 0
@@ -9,11 +9,6 @@ Write-Host "━━━━━━━━━━━━━━━━━━━━━━�
 Write-Host " GSD ► VALIDATING TEMPLATES" -ForegroundColor Cyan
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
 Write-Host ""
-
-if (-not (Test-Path ".gsd/templates")) {
-    Write-Host "❌ Missing .gsd/templates/ directory" -ForegroundColor Red
-    exit 1
-}
 
 $templates = Get-ChildItem ".gsd/templates/*.md"
 

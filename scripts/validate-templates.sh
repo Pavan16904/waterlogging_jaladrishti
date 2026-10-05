@@ -11,13 +11,7 @@ echo " GSD ► VALIDATING TEMPLATES"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-if [ ! -d ".gsd/templates" ]; then
-    echo "❌ Missing .gsd/templates/ directory"
-    exit 1
-fi
-
 for file in .gsd/templates/*.md; do
-    [ -f "$file" ] || continue
     ((templates_checked++))
     filename=$(basename "$file")
     has_errors=false

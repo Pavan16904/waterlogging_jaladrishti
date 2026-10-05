@@ -52,12 +52,7 @@ for arg in $EXTRA_ARGS; do
     esac
 done
 
-grep -rn "$PATTERN" "$SEARCH_PATH" $GREP_ARGS --color=always 2>/dev/null
-grep_status=$?
-if [ $grep_status -eq 1 ]; then
+grep -rn "$PATTERN" "$SEARCH_PATH" $GREP_ARGS --color=always 2>/dev/null || {
     echo "No matches found for: $PATTERN"
     exit 0
-elif [ $grep_status -ne 0 ]; then
-    grep -rn "$PATTERN" "$SEARCH_PATH" $GREP_ARGS --color=always >&2
-    exit $grep_status
-fi
+}

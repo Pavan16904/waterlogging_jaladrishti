@@ -36,9 +36,9 @@ Requirements derived from SPEC.md for traceability and coverage tracking.
 
 | ID | Requirement | Category | Phase | Status |
 |----|-------------|----------|-------|--------|
-| NFR-01 | {NFR description from SPEC — e.g. performance target} | {Category} | {Phase} | Pending |
-| NFR-02 | {NFR description from SPEC — e.g. UX requirement} | {Category} | {Phase} | Pending |
-| NFR-03 | {NFR description from SPEC — e.g. reliability target} | {Category} | {Phase} | Pending |
+| NFR-01 | Response time < 200ms | Performance | 4 | Pending |
+| NFR-02 | Mobile responsive | UX | All | Pending |
+| NFR-03 | 99% uptime | Reliability | 4 | Pending |
 
 ---
 

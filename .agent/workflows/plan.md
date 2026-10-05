@@ -157,7 +157,7 @@ Extract from $ARGUMENTS:
 
 **PowerShell:**
 ```powershell
-Select-String -Path ".gsd/ROADMAP.md" -Pattern "Phase ${PHASE}:"
+Select-String -Path ".gsd/ROADMAP.md" -Pattern "Phase $PHASE:"
 ```
 
 **Bash:**

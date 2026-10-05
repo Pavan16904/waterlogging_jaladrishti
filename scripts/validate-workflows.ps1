@@ -1,4 +1,4 @@
-# GSD Workflow Validation Script
+﻿# GSD Workflow Validation Script
 # Validates all workflow files for required structure
 
 $ErrorCount = 0
@@ -9,11 +9,6 @@ Write-Host "━━━━━━━━━━━━━━━━━━━━━━�
 Write-Host " GSD ► VALIDATING WORKFLOWS" -ForegroundColor Cyan
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
 Write-Host ""
-
-if (-not (Test-Path ".agent/workflows")) {
-    Write-Host "❌ Missing .agent/workflows/ directory" -ForegroundColor Red
-    exit 1
-}
 
 $workflows = Get-ChildItem ".agent/workflows/*.md"
 

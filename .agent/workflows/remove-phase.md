@@ -15,7 +15,7 @@ Remove a phase from the roadmap, with safety checks for in-progress or completed
 
 **PowerShell:**
 ```powershell
-$phase = Select-String -Path ".gsd/ROADMAP.md" -Pattern "### Phase ${N}:"
+$phase = Select-String -Path ".gsd/ROADMAP.md" -Pattern "### Phase $N:"
 if (-not $phase) {
     Write-Error "Phase $N not found in ROADMAP.md"
 }
@@ -34,7 +34,7 @@ fi
 
 **PowerShell:**
 ```powershell
-$status = Select-String -Path ".gsd/ROADMAP.md" -Pattern "Phase ${N}:.*\n.*Status: (.*)"
+$status = Select-String -Path ".gsd/ROADMAP.md" -Pattern "Phase $N:.*\n.*Status: (.*)"
 ```
 
 **Bash:**

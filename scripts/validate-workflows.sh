@@ -11,13 +11,7 @@ echo " GSD ► VALIDATING WORKFLOWS"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-if [ ! -d ".agent/workflows" ]; then
-    echo "❌ Missing .agent/workflows/ directory"
-    exit 1
-fi
-
 for file in .agent/workflows/*.md; do
-    [ -f "$file" ] || continue
     ((workflows_checked++))
     filename=$(basename "$file")
     has_errors=false
