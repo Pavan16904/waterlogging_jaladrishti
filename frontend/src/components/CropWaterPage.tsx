@@ -46,6 +46,17 @@ interface CropWaterPageProps {
   initialDistrict?: string;
 }
 
+export interface CropStageMetadata {
+  step: number;
+  name: string;
+  duration: number;
+  startDay: number;
+  endDay: number;
+  midDay: number;
+  kc: string;
+  desc: string;
+}
+
 const CATEGORY_ICONS: Record<string, string> = {
   'All': '🌾',
   'Cereals': '🌾',
@@ -81,6 +92,7 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
   const [soils, setSoils] = useState<string[]>([]);
   const [soilDetails, setSoilDetails] = useState<Record<string, any>>({});
   const [districts, setDistricts] = useState<Record<string, any>>({});
+  const [cropDetails, setCropDetails] = useState<Record<string, any>>({});
 
   // District-Smart Isolation Filter (defaults to true: strictly show only crops & soils grown in the selected district)
   const [filterByDistrict, setFilterByDistrict] = useState<boolean>(true);
@@ -89,9 +101,9 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
   const initialProfile = getDistrictProfile(initialDistrict);
   const [selectedDistrict, setSelectedDistrict] = useState<string>(initialDistrict);
   const [selectedCrop, setSelectedCrop] = useState<string>(initialProfile.defaultCrop);
-  const [daysSincePlanting, setDaysSincePlanting] = useState<number>(45);
+  const [daysSincePlanting, setDaysSincePlanting] = useState<number>(65);
   const [selectedSoil, setSelectedSoil] = useState<string>(initialProfile.defaultSoil);
-  const [fieldAreaHa, setFieldAreaHa] = useState<number>(2.0);
+  const [fieldAreaHa, setFieldAreaHa] = useState<number>(1.0);
   const [cropSearch, setCropSearch] = useState<string>('');
 
   // Results & Loading
@@ -111,6 +123,7 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
       setSoils(catalog.soils || []);
       setSoilDetails(catalog.soil_details || {});
       setDistricts(catalog.karnataka_districts || {});
+      setCropDetails(catalog.crop_details || {});
 
       // Automatically sync with initial district's primary soil and crop
       const profile = getDistrictProfile(initialDistrict);
@@ -122,6 +135,63 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
       console.error('Failed to load crop catalog:', err);
     }
   };
+
+  // Dynamic FAO-56 crop stages, total duration & optimal peak water need day
+  const currentCropMetadata = useMemo(() => {
+    const detail = cropDetails[selectedCrop];
+    const rawStages = detail?.stages || [
+      { name: 'Initial / Sowing', duration: 25, kc: 0.40 },
+      { name: 'Vegetative Development', duration: 30, kc: 0.75 },
+      { name: 'Mid-Season Reproductive', duration: 40, kc: 1.15 },
+      { name: 'Maturation & Harvest', duration: 25, kc: 0.65 }
+    ];
+
+    let cum = 0;
+    const computedStages: CropStageMetadata[] = rawStages.map((st: any, idx: number): CropStageMetadata => {
+      const dur = Number(st.duration) || 25;
+      const start = cum + 1;
+      const end = cum + dur;
+      const mid = Math.round(start + dur / 2);
+      cum = end;
+      
+      const stageDescs = [
+        'Germination, seedling emergence and shallow root development.',
+        'Rapid canopy cover expansion, active tillering and stem elongation.',
+        'Flowering, pollination and grain/fruit filling (Peak critical water need).',
+        'Senescence, grain hardening and maturity drying down for harvest.'
+      ];
+
+      return {
+        step: idx + 1,
+        name: st.name || `Stage ${idx + 1}`,
+        duration: dur,
+        startDay: start,
+        endDay: end,
+        midDay: mid,
+        kc: st.kc ? `Kc ${Number(st.kc).toFixed(2)}` : (st.kc_end ? `Kc ${Number(st.kc_end).toFixed(2)}` : 'Kc ~1.00'),
+        desc: stageDescs[idx] || 'Crop developmental phase under FAO-56 guidelines.'
+      };
+    });
+
+    const totalDuration = cum || 120;
+    // Peak mid-season is stage 3 (index 2) or stage 2
+    const peakStage = computedStages[2] || computedStages[1] || computedStages[0];
+    const midSeasonDay = peakStage ? peakStage.midDay : Math.round(totalDuration * 0.55);
+
+    return {
+      stages: computedStages,
+      totalDuration,
+      midSeasonDay,
+      peakStage
+    };
+  }, [cropDetails, selectedCrop]);
+
+  // Automatically calibrate crop age to peak water requirement day whenever selected crop changes
+  useEffect(() => {
+    if (currentCropMetadata?.midSeasonDay) {
+      setDaysSincePlanting(currentCropMetadata.midSeasonDay);
+    }
+  }, [selectedCrop, currentCropMetadata.midSeasonDay]);
 
   // Current district agro-profile
   const currentDistrictProfile = useMemo(() => {
@@ -242,12 +312,20 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
   // Determine active growth stage step (1 to 4)
   const growthStageStep = useMemo(() => {
     const stageName = result?.growth_stage?.toLowerCase() || '';
-    if (stageName.includes('initial') || stageName.includes('emergence')) return 1;
-    if (stageName.includes('development') || stageName.includes('vegetative')) return 2;
-    if (stageName.includes('mid') || stageName.includes('flowering') || stageName.includes('yield')) return 3;
-    if (stageName.includes('late') || stageName.includes('maturity') || stageName.includes('ripening')) return 4;
-    return daysSincePlanting <= 25 ? 1 : daysSincePlanting <= 60 ? 2 : daysSincePlanting <= 100 ? 3 : 4;
-  }, [result, daysSincePlanting]);
+    if (stageName.includes('initial') || stageName.includes('emergence') || stageName.includes('nursery')) return 1;
+    if (stageName.includes('development') || stageName.includes('vegetative') || stageName.includes('tillering')) return 2;
+    if (stageName.includes('mid') || stageName.includes('flowering') || stageName.includes('yield') || stageName.includes('reproductive') || stageName.includes('tasseling')) return 3;
+    if (stageName.includes('late') || stageName.includes('maturity') || stageName.includes('ripening') || stageName.includes('harvest') || stageName.includes('drying')) return 4;
+
+    if (currentCropMetadata?.stages) {
+      for (const st of currentCropMetadata.stages) {
+        if (daysSincePlanting >= st.startDay && daysSincePlanting <= st.endDay) {
+          return st.step;
+        }
+      }
+    }
+    return 2;
+  }, [result, daysSincePlanting, currentCropMetadata]);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24">
@@ -490,43 +568,89 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
           </div>
         </div>
 
-        {/* Step 3: Growth Stage & Farm Area */}
+        {/* Step 3: Growth Stage & Farm Area (Automated) */}
         <div className="rounded-3xl glass-card p-6 border border-slate-200 dark:border-slate-700/60 shadow-md space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sky-600 dark:text-sky-400 font-bold text-sm">
               <span className="w-6 h-6 rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-400 flex items-center justify-center text-xs font-black">3</span>
               <span>Crop Age & Plot Size</span>
             </div>
-            <span className="text-[10px] text-slate-400 font-mono">Day {daysSincePlanting}</span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setDaysSincePlanting(currentCropMetadata.midSeasonDay)}
+                className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1 hover:bg-emerald-500/25 transition-all shadow-sm"
+                title="Automatically set age to crop's critical peak water requirement stage"
+              >
+                <Sparkles className="w-3 h-3 text-emerald-500" /> Auto Peak
+              </button>
+              <span className="text-[10px] text-slate-400 font-mono">
+                Day {daysSincePlanting}/{currentCropMetadata.totalDuration}
+              </span>
+            </div>
           </div>
 
-          {/* Days Since Planting Slider */}
+          {/* Days Since Planting Slider & Auto-Calibration */}
           <div>
             <div className="flex items-center justify-between text-xs mb-2">
               <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-sky-500" /> Days Since Sowing:
               </span>
-              <span className="font-black text-sky-600 dark:text-sky-400 font-mono text-base">
-                Day {daysSincePlanting}
-              </span>
+              <div className="flex items-center gap-2">
+                {daysSincePlanting === currentCropMetadata.midSeasonDay && (
+                  <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 animate-pulse">
+                    ⚡ Auto-Calibrated
+                  </span>
+                )}
+                <span className="font-black text-sky-600 dark:text-sky-400 font-mono text-base">
+                  Day {daysSincePlanting}
+                </span>
+              </div>
             </div>
             <input
               type="range"
               min={1}
-              max={150}
+              max={currentCropMetadata.totalDuration}
               value={daysSincePlanting}
               onChange={(e) => setDaysSincePlanting(Number(e.target.value))}
               className="w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
             />
             <div className="flex justify-between text-[10px] text-slate-400 mt-1.5 font-medium">
               <span>Sowing (Day 1)</span>
-              <span>Mid-Season</span>
-              <span>Harvest (Day 150)</span>
+              <span className="text-sky-600 dark:text-sky-400 font-bold">
+                Peak Need (Day {currentCropMetadata.midSeasonDay})
+              </span>
+              <span>Harvest (Day {currentCropMetadata.totalDuration})</span>
+            </div>
+
+            {/* Quick 1-Click Stage Selectors */}
+            <div className="grid grid-cols-4 gap-1.5 pt-2.5">
+              {currentCropMetadata.stages.map((st: CropStageMetadata, i: number) => {
+                const isStageActive = daysSincePlanting >= st.startDay && daysSincePlanting <= st.endDay;
+                const stageIcons = ['🌱', '🌿', '🌸', '🌾'];
+                const stageLabels = ['Early', 'Vegetative', 'Peak (Auto)', 'Harvest'];
+                return (
+                  <button
+                    key={st.step}
+                    type="button"
+                    onClick={() => setDaysSincePlanting(st.midDay)}
+                    className={`px-1.5 py-1.5 rounded-xl text-[10px] font-bold flex flex-col items-center gap-0.5 border transition-all ${
+                      isStageActive
+                        ? 'bg-sky-500/15 border-sky-500 text-sky-700 dark:text-sky-300 shadow-sm ring-1 ring-sky-500/30'
+                        : 'bg-slate-100/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-400'
+                    }`}
+                  >
+                    <span className="text-xs">{stageIcons[i] || '🌿'}</span>
+                    <span className="truncate max-w-full">{stageLabels[i] || st.name}</span>
+                    <span className="text-[9px] font-mono opacity-70">Day {st.midDay}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Farm Size */}
-          <div>
+          {/* Farm Size & Presets */}
+          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between text-xs mb-2">
               <span className="font-bold text-slate-700 dark:text-slate-300">Plot Area:</span>
               <span className="font-black text-slate-900 dark:text-white font-mono text-sm">
@@ -542,52 +666,84 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
               onChange={(e) => setFieldAreaHa(Number(e.target.value))}
               className="w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
             />
+            {/* Quick 1-Click Plot Area Presets */}
+            <div className="grid grid-cols-4 gap-1.5 mt-2">
+              {[
+                { label: '0.5 ha', sub: '~1.2 ac', val: 0.5 },
+                { label: '1.0 ha ★', sub: 'Karnataka Avg', val: 1.0 },
+                { label: '2.0 ha', sub: '~5 ac', val: 2.0 },
+                { label: '5.0 ha', sub: '~12.5 ac', val: 5.0 }
+              ].map((preset) => (
+                <button
+                  key={preset.val}
+                  type="button"
+                  onClick={() => setFieldAreaHa(preset.val)}
+                  className={`py-1 px-1 rounded-lg text-center border transition-all ${
+                    fieldAreaHa === preset.val
+                      ? 'bg-cyan-500/15 border-cyan-500 text-cyan-700 dark:text-cyan-300 shadow-sm ring-1 ring-cyan-500/30'
+                      : 'bg-slate-100/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-400'
+                  }`}
+                >
+                  <div className="text-[10px] font-black">{preset.label}</div>
+                  <div className="text-[8px] opacity-75">{preset.sub}</div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Visual 4-Stage Crop Growth Timeline Stepper */}
       <div className="rounded-3xl glass-card p-6 border border-slate-200 dark:border-slate-800 shadow-lg space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
             <Activity className="w-3.5 h-3.5 text-emerald-500" />
-            FAO-56 Phenological Growth Stage Timeline
+            FAO-56 Phenological Growth Stage Timeline &bull; {selectedCrop} ({currentCropMetadata.totalDuration} Days Total)
           </span>
-          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-            Active: {result?.growth_stage || 'Vegetative'} (Kc: {result?.crop_coefficient_kc || 1.0})
+          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 self-start sm:self-auto">
+            Active: {result?.growth_stage || 'Peak Mid-Season'} (Kc: {result?.crop_coefficient_kc || 1.15})
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          {[
-            { step: 1, name: '1. Initial / Sowing', range: 'Day 1 - 25', desc: 'Germination & shallow root establishment. High soil surface evaporation.', kcEst: 'Kc ~0.40' },
-            { step: 2, name: '2. Vegetative Development', range: 'Day 26 - 55', desc: 'Rapid canopy leaf expansion & root elongation. Transpiration rises steadily.', kcEst: 'Kc ~0.75' },
-            { step: 3, name: '3. Mid-Season Reproductive', range: 'Day 56 - 95', desc: 'Flowering & grain/fruit fill. Peak critical water requirement window.', kcEst: 'Kc ~1.15' },
-            { step: 4, name: '4. Maturation & Ripening', range: 'Day 96 - 150', desc: 'Canopy yellowing & senescence. Reduced irrigation to encourage dry-down.', kcEst: 'Kc ~0.65' }
-          ].map((s) => {
+          {currentCropMetadata.stages.map((s: CropStageMetadata) => {
             const isActive = growthStageStep === s.step;
             return (
               <div
                 key={s.step}
-                className={`p-4 rounded-2xl border transition-all ${
+                role="button"
+                tabIndex={0}
+                onClick={() => setDaysSincePlanting(s.midDay)}
+                onKeyDown={(e) => e.key === 'Enter' && setDaysSincePlanting(s.midDay)}
+                className={`p-4 rounded-2xl border transition-all cursor-pointer text-left select-none ${
                   isActive
-                    ? 'border-emerald-500 bg-emerald-500/10 shadow-md ring-2 ring-emerald-500/20'
-                    : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 opacity-75'
+                    ? 'border-emerald-500 bg-emerald-500/10 shadow-md ring-2 ring-emerald-500/20 scale-[1.01]'
+                    : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 opacity-75 hover:opacity-100 hover:border-slate-400 hover:shadow-sm'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className={`text-xs font-extrabold ${isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>
-                    {s.name}
+                  <span className={`text-xs font-extrabold ${isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                    {s.step}. {s.name}
                   </span>
-                  {isActive && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>}
+                  {isActive ? (
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                  ) : (
+                    <span className="text-[9px] text-slate-400 hover:text-emerald-500 transition-colors">Select ↗</span>
+                  )}
                 </div>
                 <div className="text-[10px] text-slate-400 font-mono mt-1 flex justify-between">
-                  <span>{s.range}</span>
-                  <span className="font-bold text-slate-600 dark:text-slate-300">{s.kcEst}</span>
+                  <span>Day {s.startDay} - {s.endDay} ({s.duration}d)</span>
+                  <span className="font-bold text-slate-600 dark:text-slate-300">{s.kc}</span>
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-2 leading-relaxed">
                   {s.desc}
                 </p>
+                {isActive && (
+                  <div className="mt-2 pt-2 border-t border-emerald-500/20 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center justify-between">
+                    <span>Currently Active</span>
+                    <span className="font-mono">Day {daysSincePlanting}</span>
+                  </div>
+                )}
               </div>
             );
           })}

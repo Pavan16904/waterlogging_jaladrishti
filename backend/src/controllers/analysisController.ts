@@ -205,6 +205,80 @@ export function generateCatchmentMicroZones(studyAreaId: string, studyArea: any,
 }
 
 /**
+ * FALLBACK: Generate & store 8 flood zones directly WITHOUT calling ML service.
+ * Used when the ML service is offline. Zones are geometrically generated
+ * from the study area center — ensuring every district always shows a flood map.
+ */
+async function generateAndStoreZonesDirectly(
+  studyAreaId: string,
+  rainfallMm: number = 45.0
+) {
+  const saResult = await query(`SELECT * FROM study_areas WHERE id = $1;`, [studyAreaId]);
+  if (saResult.rows.length === 0) return;
+  const studyArea = saResult.rows[0];
+  const zones = generateCatchmentMicroZones(studyAreaId, studyArea, rainfallMm);
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const preStr = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+  const newRunId = `run_${studyAreaId}_fallback_${Date.now()}`;
+
+  const totalArea = zones.reduce((s, z) => s + (z.area_ha / 100), 0);
+  const severeZones = zones.filter(z => z.target_severity === 'Severe');
+  const modZones = zones.filter(z => z.target_severity === 'Moderate');
+  const lowZones = zones.filter(z => z.target_severity === 'Low');
+  const inundatedArea = (severeZones.reduce((s, z) => s + z.area_ha, 0) +
+                         modZones.reduce((s, z) => s + z.area_ha, 0) * 0.4) / 100;
+  const pct = ((inundatedArea / totalArea) * 100).toFixed(1);
+
+  await query(
+    `INSERT INTO analysis_runs (id, study_area_id, model_type, pre_event_date, post_event_date, rainfall_mm, total_area_km2, waterlogged_area_km2, waterlogged_percentage, severe_count, moderate_count, low_count)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     ON CONFLICT (id) DO NOTHING;`,
+    [newRunId, studyAreaId, 'geometric_fallback', preStr, todayStr, rainfallMm,
+     totalArea, inundatedArea, Number(pct), severeZones.length, modZones.length, lowZones.length]
+  );
+
+  const severityProbs: Record<string, number> = { Severe: 0.88, Moderate: 0.55, Low: 0.20 };
+
+  for (const z of zones) {
+    const zoneId = `z_${newRunId}_${z.id}`;
+    const sev = z.target_severity;
+    const prob = severityProbs[sev] || 0.50;
+    await query(
+      `INSERT INTO severity_zones (id, analysis_run_id, zone_name, severity, probability, elevation_m, slope_deg, land_use, area_ha, is_persistent, ndwi, mndwi, ndvi, vv_db, vh_db, geojson_feature)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       ON CONFLICT (id) DO NOTHING;`,
+      [zoneId, newRunId, z.name, sev, prob, z.elevation_m, z.slope_deg,
+       z.land_use, z.area_ha, z.is_persistent, z.ndwi, z.mndwi, z.ndvi, z.vv_db, z.vh_db,
+       JSON.stringify({ ...z.geojson_feature, properties: { id: zoneId, name: z.name, severity: sev, probability: prob } })]
+    );
+
+    if (sev === 'Severe' || sev === 'Moderate') {
+      const advId = `adv_${newRunId}_${z.id}`;
+      const recMap: Record<string, string> = {
+        Severe: 'Deploy emergency pumps and open downstream drainage channels immediately.',
+        Moderate: 'Monitor water levels and prepare dewatering equipment on standby.'
+      };
+      await query(
+        `INSERT INTO drainage_advisories (id, analysis_run_id, zone_id, zone_name, priority, urgency_score, title, diagnosis, action_recommendation, estimated_volume_m3, mitigation_actions)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT (id) DO NOTHING;`,
+        [advId, newRunId, zoneId, z.name,
+         sev === 'Severe' ? 'Critical' : 'High',
+         sev === 'Severe' ? 95 : 60,
+         `${z.name} — ${sev} Waterlogging Risk`,
+         `Waterlogging probability: ${(prob * 100).toFixed(0)}%. Area: ${z.area_ha} ha.`,
+         recMap[sev] || 'Monitor and inspect drainage.',
+         Math.round(z.area_ha * 500),
+         JSON.stringify([{ action: recMap[sev], cost: '₹ 1,50,000', time: '4-6 hours' }])]
+      );
+    }
+  }
+
+  console.log(`[+] Fallback: Generated ${zones.length} zones for ${studyAreaId} without ML service.`);
+}
+
+/**
  * Execute AI ML inference and persist the 8-zone ensemble into DB
  */
 export async function executeAndStoreAnalysis(
@@ -327,13 +401,23 @@ export async function getLatestAnalysis(req: Request, res: Response) {
       [studyAreaId]
     );
 
-    // If no run or run had fewer than 6 zones, auto-execute the multi-tier 8-zone analysis
+    // If no run exists, try ML analysis first, fallback to direct zone generation
     if (runResult.rows.length === 0) {
-      await executeAndStoreAnalysis(studyAreaId);
+      try {
+        await executeAndStoreAnalysis(studyAreaId);
+      } catch (mlErr) {
+        // ML service offline — generate and store zones directly without ML inference
+        console.warn(`[Fallback] ML service unavailable for ${studyAreaId}, generating zones directly.`);
+        await generateAndStoreZonesDirectly(studyAreaId);
+      }
       runResult = await query(
         `SELECT * FROM analysis_runs WHERE study_area_id = $1 ORDER BY created_at DESC LIMIT 1;`,
         [studyAreaId]
       );
+    }
+
+    if (runResult.rows.length === 0) {
+      return res.json({ success: true, run: null, zones: [], advisories: [] });
     }
 
     const run = runResult.rows[0];
@@ -347,9 +431,14 @@ export async function getLatestAnalysis(req: Request, res: Response) {
       [run.id]
     );
 
-    // If existing legacy run has fewer than 6 zones, regenerate with all 8 zones immediately
+    // If existing run has fewer than 6 zones, try ML regeneration with fallback
     if (zonesResult.rows.length < 6) {
-      await executeAndStoreAnalysis(studyAreaId);
+      try {
+        await executeAndStoreAnalysis(studyAreaId);
+      } catch (mlErr) {
+        console.warn(`[Fallback] ML service unavailable for zone regeneration on ${studyAreaId}, using direct generation.`);
+        await generateAndStoreZonesDirectly(studyAreaId);
+      }
       runResult = await query(
         `SELECT * FROM analysis_runs WHERE study_area_id = $1 ORDER BY created_at DESC LIMIT 1;`,
         [studyAreaId]
