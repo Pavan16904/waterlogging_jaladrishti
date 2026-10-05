@@ -56,177 +56,163 @@ export const Header: React.FC<HeaderProps> = ({
 
   const activeAlert = alerts[currentAlertIdx] || null;
 
-  return (
-    <header className="glass-nav border-b flex flex-col sticky top-0 z-50 backdrop-blur-2xl transition-all shadow-md">
-      <div className="px-4 lg:px-8 py-2.5 flex items-center justify-between gap-4">
-        {/* Brand & Platform Identity */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="relative flex items-center justify-center w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 via-sky-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 border border-cyan-400/40">
-            <Satellite className="w-5 h-5 animate-pulse" />
-            <span className="absolute -top-1 -right-1 flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-slate-950"></span>
-            </span>
-          </div>
+  /* ─── Nav tab helper ──────────────────────────────────────── */
+  const tabs = [
+    { id: 'map'        as const, label: t('navFloodMap', 'Flood Map'),         Icon: Map,        color: 'text-sky-500  dark:text-sky-400'      },
+    { id: 'weather'    as const, label: t('navWeather',  'Weather'),            Icon: CloudSun,   color: 'text-blue-500 dark:text-blue-400'     },
+    { id: 'crop-water' as const, label: t('navCropWater','Crop Advisor'),       Icon: Sprout,     color: 'text-emerald-500 dark:text-emerald-400'},
+    { id: 'drainage'   as const, label: t('navDrainage', 'Drainage'),           Icon: ShieldAlert,color: 'text-rose-500  dark:text-rose-400'    },
+    { id: 'overview'   as const, label: 'Overview',                             Icon: Award,      color: 'text-violet-500 dark:text-violet-400' },
+  ];
 
+  return (
+    <header className="glass-nav flex flex-col sticky top-0 z-50">
+      <div className="px-4 lg:px-6 h-14 flex items-center justify-between gap-4">
+
+        {/* ── Brand ──────────────────────────────────────────── */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-sm shadow-sky-500/30">
+            <Satellite className="w-4 h-4" />
+          </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xl font-black tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-500 bg-clip-text text-transparent">
+              <span className="text-[15px] font-bold tracking-tight text-slate-900 dark:text-white">
                 {t('platformTitle', 'JalaDrishti AI')}
               </span>
-              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 uppercase tracking-wider">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                {t('liveWarningBadge', 'Live Flood Early Warning')}
+              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 uppercase tracking-wider">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Live
               </span>
             </div>
-            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 tracking-tight hidden md:block">
-              {t('platformSubtitle', 'Urban Inundation Radar & Agricultural Waterlogging Prevention System')}
+            <span className="text-[10.5px] font-medium text-slate-500 dark:text-slate-500 hidden md:block leading-tight">
+              Flood Intelligence &amp; Agro-Hydrology Platform
             </span>
           </div>
         </div>
 
-        {/* Spacious Segmented 4-Page Navigation */}
-        <nav aria-label="Main Navigation" className="flex items-center p-1.5 rounded-2xl bg-slate-100/90 dark:bg-slate-900/90 border border-slate-200 dark:border-white/10 shadow-inner">
-          <button
-            onClick={() => setActiveTab('map')}
-            className={`flex items-center gap-2 px-3.5 md:px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all duration-200 ${
-              activeTab === 'map'
-                ? 'bg-gradient-to-r from-cyan-500/20 via-sky-500/20 to-blue-500/20 text-cyan-400 border border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.25)]'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Map className="w-4 h-4 text-cyan-400" />
-            <span>{t('navFloodMap', 'Flood Map')}</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('weather')}
-            className={`flex items-center gap-2 px-3.5 md:px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all duration-200 ${
-              activeTab === 'weather'
-                ? 'bg-gradient-to-r from-sky-500/20 to-blue-500/20 text-sky-400 border border-sky-500/40 shadow-[0_0_15px_rgba(14,165,233,0.25)]'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <CloudSun className="w-4 h-4 text-sky-400" />
-            <span>{t('navWeather', 'Weather & Radar')}</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('crop-water')}
-            className={`flex items-center gap-2 px-3.5 md:px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all duration-200 ${
-              activeTab === 'crop-water'
-                ? 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.25)]'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Sprout className="w-4 h-4 text-emerald-400" />
-            <span>{t('navCropWater', 'Crop Advisor')}</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('drainage')}
-            className={`flex items-center gap-2 px-3.5 md:px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all duration-200 ${
-              activeTab === 'drainage'
-                ? 'bg-gradient-to-r from-rose-500/20 to-amber-500/20 text-rose-400 border border-rose-500/40 shadow-[0_0_15px_rgba(244,63,94,0.25)]'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <ShieldAlert className="w-4 h-4 text-rose-400" />
-            <span>{t('navDrainage', 'Drainage Actions')}</span>
-          </button>
-
-          <button
-            id="nav-overview"
-            onClick={() => setActiveTab('overview')}
-            className={`flex items-center gap-2 px-3.5 md:px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all duration-200 ${
-              activeTab === 'overview'
-                ? 'bg-gradient-to-r from-violet-500/20 to-purple-500/20 text-violet-400 border border-violet-500/40 shadow-[0_0_15px_rgba(139,92,246,0.25)]'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-            title="Project Overview — Innovation, Metrics & Budget"
-          >
-            <Award className="w-4 h-4 text-violet-400" />
-            <span>Overview</span>
-          </button>
+        {/* ── Navigation ─────────────────────────────────────── */}
+        <nav aria-label="Main Navigation" className="hidden md:flex items-center gap-0.5">
+          {tabs.map(({ id, label, Icon, color }) => {
+            const isActive = activeTab === id;
+            return (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                className={`relative flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${
+                  isActive
+                    ? 'text-slate-900 dark:text-white bg-slate-100 dark:bg-white/8'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5'
+                }`}
+              >
+                <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? color : 'opacity-60'}`} />
+                {label}
+                {isActive && (
+                  <span className="absolute bottom-0 left-3.5 right-3.5 h-[2px] rounded-t-full bg-sky-500" />
+                )}
+              </button>
+            );
+          })}
         </nav>
 
-        {/* Right Controls & Real-Time Action Triggers */}
-        <div className="flex items-center gap-2 text-xs">
-          
-          {/* IoT Telemetry Drawer Button */}
+        {/* ── Right actions ───────────────────────────────────── */}
+        <div className="flex items-center gap-1.5">
+
           {onOpenIoTSensors && (
             <button
               onClick={onOpenIoTSensors}
-              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 font-bold border border-sky-500/30 transition-all shadow-[0_0_12px_rgba(14,165,233,0.15)]"
-              title="Open Live IoT Sump & Water Level Telemetry"
+              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/8 border border-transparent hover:border-slate-200 dark:hover:border-white/10 transition-all"
+              title="Live IoT Sensor Telemetry"
             >
-              <Gauge className="w-3.5 h-3.5 text-sky-400" />
-              <span>{t('btnIoTSensors', 'IoT Telemetry')}</span>
+              <Gauge className="w-3.5 h-3.5" />
+              <span>{t('btnIoTSensors', 'IoT Sensors')}</span>
             </button>
           )}
 
-          {/* Emergency Operations Button */}
           {onOpenEmergencyOps && (
             <button
               onClick={onOpenEmergencyOps}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 font-bold border border-rose-500/40 transition-all shadow-[0_0_12px_rgba(244,63,94,0.2)] animate-pulse"
-              title="Open Emergency Operations Center & Incident Dispatch"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 dark:hover:bg-rose-500/15 border border-rose-200 dark:border-rose-500/20 transition-all"
+              title="Emergency Operations Center"
             >
-              <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-              <span className="hidden sm:inline">{t('btnEmergencyEOC', 'Emergency EOC')}</span>
+              <ShieldAlert className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{t('btnEmergencyEOC', 'Emergency')}</span>
             </button>
           )}
 
-          {/* Citizen Lifeline & Public SOS Hub */}
           {onOpenCitizenLifeline && (
             <button
               onClick={onOpenCitizenLifeline}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 hover:from-amber-500/30 hover:to-rose-500/30 text-amber-300 dark:text-amber-200 font-black border border-amber-500/40 transition-all shadow-[0_0_15px_rgba(245,158,11,0.25)] hover:scale-105"
-              title="Citizen Lifeline: Crowdsourced Waterlogging SOS, Relief Shelters & Farmer Support"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/15 border border-amber-200 dark:border-amber-500/20 transition-all"
+              title="Citizen SOS & Lifeline Hub"
             >
-              <LifeBuoy className="w-4 h-4 text-amber-400 animate-spin-slow" />
+              <LifeBuoy className="w-3.5 h-3.5" />
               <span className="hidden md:inline">{t('btnCitizenLifeline', 'Citizen SOS')}</span>
             </button>
           )}
 
-          {/* Export PDF */}
+          <div className="w-px h-5 bg-slate-200 dark:bg-white/10 mx-0.5" />
+
           <button
             onClick={onOpenExportModal}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold border border-slate-200 dark:border-white/10 transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/8 border border-transparent hover:border-slate-200 dark:hover:border-white/10 transition-all"
           >
-            <FileDown className="w-4 h-4 text-cyan-400" />
-            <span className="hidden sm:inline">{t('btnExportPdf', 'Export PDF')}</span>
+            <FileDown className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{t('btnExportPdf', 'Export')}</span>
           </button>
-          {/* Theme Toggle */}
+
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-white/10 transition-colors shadow-sm"
-            title={t('themeSwitch', 'Switch Theme')}
+            className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/8 transition-all"
+            title={t('themeSwitch', 'Toggle theme')}
           >
-            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
+            {theme === 'dark'
+              ? <Sun className="w-4 h-4 text-amber-400" />
+              : <Moon className="w-4 h-4" />
+            }
           </button>
         </div>
-
       </div>
 
-      {/* Live Emergency Ticker Ribbon */}
-      {activeAlert && (
-        <div className="flex items-center justify-between gap-3 px-3 py-1.5 bg-slate-900/95 dark:bg-slate-950 border-t border-red-500/20 text-[11px] text-slate-300">
-          <div className="flex items-center gap-2 truncate">
-            <span className={`px-2 py-0.5 rounded font-black text-[9px] uppercase ${
-              activeAlert.level === 'CRITICAL' ? 'bg-red-500 text-white animate-pulse' : 'bg-amber-500 text-white'
-            }`}>
-              {activeAlert.level} ALERT
-            </span>
-            <span className="font-bold text-cyan-300">{activeAlert.district}:</span>
-            <span className="truncate text-slate-200">{activeAlert.title} &mdash; {activeAlert.message}</span>
-          </div>
+      {/* ── Mobile nav strip ──────────────────────────────────── */}
+      <div className="md:hidden flex items-center gap-0.5 px-3 pb-1 overflow-x-auto scrollbar-hide">
+        {tabs.map(({ id, label, Icon, color }) => {
+          const isActive = activeTab === id;
+          return (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium whitespace-nowrap transition-all duration-150 ${
+                isActive
+                  ? 'text-slate-900 dark:text-white bg-slate-100 dark:bg-white/8'
+                  : 'text-slate-500 dark:text-slate-400'
+              }`}
+            >
+              <Icon className={`w-3.5 h-3.5 ${isActive ? color : 'opacity-50'}`} />
+              {label}
+            </button>
+          );
+        })}
+      </div>
 
+      {/* ── Alert ticker ──────────────────────────────────────── */}
+      {activeAlert && (
+        <div className="flex items-center justify-between gap-3 px-4 py-1.5 bg-red-950/80 dark:bg-red-950/60 border-t border-red-800/40 text-[11px]">
+          <div className="flex items-center gap-2 truncate text-red-200">
+            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide ${
+              activeAlert.level === 'CRITICAL'
+                ? 'bg-red-500 text-white'
+                : 'bg-amber-500 text-white'
+            }`}>
+              {activeAlert.level}
+            </span>
+            <span className="font-semibold text-red-300">{activeAlert.district}:</span>
+            <span className="truncate">{activeAlert.title} — {activeAlert.message}</span>
+          </div>
           <button
             onClick={onOpenEmergencyOps}
-            className="shrink-0 font-bold text-cyan-400 hover:text-cyan-300 underline text-[10px] flex items-center gap-1"
+            className="shrink-0 text-red-300 hover:text-white font-semibold flex items-center gap-1 transition-colors"
           >
-            <span>{t('emergencyCenterTitle', 'View Incident Brief')}</span> &rarr;
+            {t('emergencyCenterTitle', 'View')} →
           </button>
         </div>
       )}

@@ -275,7 +275,7 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#080c14] bg-ambient-mesh text-slate-900 dark:text-slate-100 selection:bg-cyan-500 selection:text-white transition-colors duration-300">
+    <div className="min-h-screen flex flex-col bg-[var(--bg-primary)] bg-ambient-mesh text-slate-900 dark:text-slate-100 transition-colors duration-300">
       {/* Top Universal Modern Navigation Header with Live Ticker */}
       <Header
         activeTab={activeTab}
@@ -400,24 +400,16 @@ export function App() {
       </main>
 
       {/* Footer */}
-      <footer className="glass-nav border-t border-slate-200 dark:border-slate-800/80 px-4 md:px-8 py-3 text-xs text-slate-500 dark:text-slate-400 mt-auto">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+      <footer className="glass-nav border-t px-4 md:px-8 py-3 text-xs text-slate-500 dark:text-slate-500 mt-auto">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-2">
           {/* Live Data Status */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold text-[11px] border border-emerald-500/20">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              {t('satelliteLive', 'Satellite Imagery Live')}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="font-medium text-slate-600 dark:text-slate-400">Sentinel SAR · Open-Meteo · FAO-56</span>
             </span>
-
-            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-semibold text-[11px] border border-cyan-500/20">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
-              {t('radarLive', 'Live Doppler Radar')}
-            </span>
-
-            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 font-semibold text-[11px] border border-sky-500/20">
-              <span className="w-2 h-2 rounded-full bg-sky-500"></span>
-              {iotSensors.length} {t('waterSensors', 'Water Level Sensors')}
-            </span>
+            <span className="text-slate-300 dark:text-slate-600">·</span>
+            <span className="font-medium">{iotSensors.length} IoT sensors active</span>
           </div>
 
           {/* Quick Links */}
