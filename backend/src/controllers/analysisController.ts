@@ -300,16 +300,46 @@ export async function executeAndStoreAnalysis(
   const todayDefault = new Date().toISOString().split('T')[0];
   const preDefault = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
 
-  // Call Python FastAPI ML Service
-  const mlResponse = await axios.post(`${ML_SERVICE_URL}/api/ml/analyze-scene`, {
-    study_area_id: studyAreaId,
-    study_area_name: studyArea.name,
-    pre_event_date: preEventDate || preDefault,
-    post_event_date: postEventDate || todayDefault,
-    model_type: modelType || 'random_forest',
-    rainfall_override_mm: rainVal,
-    zones: zonesToAnalyze
-  });
+  // Call Python FastAPI ML Service — retry up to 3 times with backoff
+  // to handle startup race condition where ML starts after backend
+  let mlResponse: any;
+  let lastMLError: any;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      mlResponse = await axios.post(`${ML_SERVICE_URL}/api/ml/analyze-scene`, {
+        study_area_id: studyAreaId,
+        study_area_name: studyArea.name,
+        pre_event_date: preEventDate || preDefault,
+        post_event_date: postEventDate || todayDefault,
+        model_type: modelType || 'random_forest',
+        rainfall_override_mm: rainVal,
+        zones: zonesToAnalyze
+      }, { timeout: 15000 });
+      lastMLError = null;
+      break; // success
+    } catch (e: any) {
+      lastMLError = e;
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, 1500 * attempt)); // 1.5s, 3s
+      }
+    }
+  }
+
+  // If ML service is still unreachable after retries, fall back to geometric zone generator
+  if (lastMLError) {
+    console.warn(`[!] ML service unreachable after 3 attempts (${lastMLError.message}). Using geometric fallback.`);
+    await generateAndStoreZonesDirectly(studyAreaId, rainVal);
+    const fallbackRunResult = await query(
+      `SELECT ar.*, sa.name AS area_name FROM analysis_runs ar
+       JOIN study_areas sa ON sa.id = ar.study_area_id
+       WHERE ar.study_area_id = $1 ORDER BY ar.created_at DESC LIMIT 1;`,
+      [studyAreaId]
+    );
+    if (fallbackRunResult.rows.length > 0) {
+      return { newRunId: fallbackRunResult.rows[0].id, mlData: fallbackRunResult.rows[0] };
+    }
+    throw new Error('ML service unavailable and fallback generation failed');
+  }
 
   const mlData = mlResponse.data;
   const newRunId = `run_${Date.now()}`;
