@@ -9,7 +9,8 @@ import {
   Sun, 
   Moon,
   Gauge,
-  LifeBuoy
+  LifeBuoy,
+  BrainCircuit
 } from 'lucide-react';
 import { LiveAlert } from '../types';
 import { useLanguage } from '../context/LanguageContext';
@@ -149,6 +150,20 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           <div className="w-px h-5 bg-slate-200 dark:bg-white/10 mx-0.5" />
+
+          {/* AI Models & XGBoost Evaluation Button */}
+          {onOpenModelModal && (
+            <button
+              onClick={onOpenModelModal}
+              className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 font-bold border border-purple-500/30 transition-all shadow-[0_0_12px_rgba(168,85,247,0.15)]"
+              title="View AI Model Architecture & XGBoost / ROC Metrics"
+            >
+              <BrainCircuit className="w-3.5 h-3.5 text-purple-400" />
+              <span>AI Models &amp; XGBoost</span>
+            </button>
+          )}
+
+          {/* Export PDF */}
 
           <button
             onClick={onOpenExportModal}

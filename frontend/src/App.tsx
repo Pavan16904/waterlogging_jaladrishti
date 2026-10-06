@@ -423,6 +423,12 @@ export function App() {
               <span>Citizen SOS / Shelters</span>
             </button>
             <button
+              onClick={() => setIsModelOpen(true)}
+              className="text-purple-400 hover:text-purple-300 hover:underline font-bold flex items-center gap-1"
+            >
+              <span>AI Models &amp; XGBoost</span>
+            </button>
+            <button
               onClick={() => setIsExportOpen(true)}
               className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-semibold"
             >
