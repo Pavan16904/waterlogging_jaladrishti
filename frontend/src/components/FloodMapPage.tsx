@@ -203,6 +203,7 @@ interface FloodMapPageProps {
   radarMeta?: RadarMeta | null;
   satelliteMeta?: SatelliteMeta | null;
   liveDrainageAdvisory?: LiveDrainageAdvisory | null;
+  iotSensors?: any;
   alerts?: LiveAlert[];
   onRefreshTelemetry?: () => void;
   liveRainfallData?: any;
@@ -210,6 +211,7 @@ interface FloodMapPageProps {
   isAutoRefreshing?: boolean;
   onManualMapRefresh?: () => void;
   onOpenEmergencyOps?: () => void;
+  onOpenIoTSensors?: () => void;
   onOpenCitizenLifeline?: () => void;
 }
 
@@ -230,12 +232,16 @@ export const FloodMapPage: React.FC<FloodMapPageProps> = ({
   radarMeta = null,
   satelliteMeta = null,
   liveDrainageAdvisory = null,
+  iotSensors,
   alerts = [],
+  onRefreshTelemetry,
   liveRainfallData,
   mapLastUpdated,
   isAutoRefreshing = false,
   onManualMapRefresh,
   onOpenEmergencyOps,
+  onOpenIoTSensors,
+  onOpenCitizenLifeline,
 }) => {
   // -------------------------------------------------------------
   // Dynamic Real-Time Timekeeping in Asia/Kolkata
