@@ -13,7 +13,9 @@ import {
   getLiveAlerts, 
   getRealtimeNowcast,
   getTodayRainfall,
-  getEarlyWarningForecast
+  getEarlyWarningForecast,
+  getSatelliteMeta,
+  getLiveDrainageAdvisory
 } from '../controllers/realtimeController.js';
 
 const router = Router();
@@ -49,11 +51,13 @@ router.get('/weather/summary', getAllKarnatakaDistrictsWeather);
 
 // Real-Time Radar, IoT Telemetry, Remote Actuators & Dynamic Nowcast
 router.get('/realtime/radar-meta', getRadarMeta);
+router.get('/realtime/satellite-meta', getSatelliteMeta);
 router.get('/realtime/iot-sensors', getIoTSensors);
 router.post('/realtime/pump-actuator', updatePumpActuator);
 router.get('/realtime/live-alerts', getLiveAlerts);
 router.get('/realtime/nowcast/:districtId', getRealtimeNowcast);
 router.get('/realtime/today-rainfall', getTodayRainfall);
 router.get('/realtime/early-warning/:districtId', getEarlyWarningForecast);
+router.get('/realtime/drainage-advisory/:districtId', getLiveDrainageAdvisory);
 
 export default router;

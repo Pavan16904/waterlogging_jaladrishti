@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { StudyArea, SeverityZone, DrainageAdvisory, AnalysisRun, FAO56IrrigationResult, ModelMetrics } from '../types';
+import { StudyArea, SeverityZone, DrainageAdvisory, AnalysisRun, FAO56IrrigationResult, ModelMetrics, SatelliteMeta, LiveDrainageAdvisory } from '../types';
 
 const API_BASE = '/api';
 
@@ -83,19 +83,31 @@ export const api = {
   },
 
   // Open-Meteo Real Weather Observatory
-  getDistrictWeather: async (district: string): Promise<any> => {
-    const res = await axios.get(`${API_BASE}/weather/forecast/${encodeURIComponent(district)}`);
-    return res.data.data;
+  getDistrictWeather: async (district: string, refresh = false): Promise<any> => {
+    const res = await axios.get(`${API_BASE}/weather/forecast/${encodeURIComponent(district)}${refresh ? '?refresh=true' : ''}`);
+    return res.data?.data || res.data;
   },
 
-  getAllDistrictsWeather: async (): Promise<any[]> => {
-    const res = await axios.get(`${API_BASE}/weather/summary`);
-    return res.data.data;
+  getAllDistrictsWeather: async (refresh = false): Promise<any[]> => {
+    const res = await axios.get(`${API_BASE}/weather/summary${refresh ? '?refresh=true' : ''}`);
+    return res.data?.data || (Array.isArray(res.data) ? res.data : []);
   },
 
   // Real-Time Doppler Radar, IoT Telemetry, Remote Actuator & Live Nowcast
-  getRadarMeta: async (): Promise<any> => {
-    const res = await axios.get(`${API_BASE}/realtime/radar-meta`);
+  getRadarMeta: async (refresh = false): Promise<any> => {
+    const res = await axios.get(`${API_BASE}/realtime/radar-meta${refresh ? '?refresh=true' : ''}`);
+    return res.data;
+  },
+
+  // NASA GIBS Earth Observation Satellite Layer Metadata
+  getSatelliteMeta: async (refresh = false): Promise<{ success: boolean; data: SatelliteMeta; lastUpdated?: string; isCached?: boolean; isStale?: boolean }> => {
+    const res = await axios.get(`${API_BASE}/realtime/satellite-meta${refresh ? '?refresh=true' : ''}`);
+    return res.data;
+  },
+
+  // Weather-Based Drainage Guidance (Requirement 3)
+  getLiveDrainageAdvisory: async (districtId: string, refresh = false): Promise<{ success: boolean; data: LiveDrainageAdvisory; lastUpdated?: string; isCached?: boolean; isStale?: boolean; providerStatus?: string }> => {
+    const res = await axios.get(`${API_BASE}/realtime/drainage-advisory/${encodeURIComponent(districtId)}${refresh ? '?refresh=true' : ''}`);
     return res.data;
   },
 
@@ -114,13 +126,13 @@ export const api = {
     return res.data;
   },
 
-  getRealtimeNowcast: async (districtId: string): Promise<any> => {
-    const res = await axios.get(`${API_BASE}/realtime/nowcast/${encodeURIComponent(districtId)}`);
+  getRealtimeNowcast: async (districtId: string, refresh = false): Promise<any> => {
+    const res = await axios.get(`${API_BASE}/realtime/nowcast/${encodeURIComponent(districtId)}${refresh ? '?refresh=true' : ''}`);
     return res.data;
   },
 
   // Live Today Rainfall from Open-Meteo (actual accumulated mm for today)
-  getTodayRainfall: async (lat: number, lng: number, districtName?: string): Promise<{
+  getTodayRainfall: async (lat: number, lng: number, districtName?: string, refresh = false): Promise<{
     success: boolean;
     date: string;
     todayRainfallMm: number;
@@ -133,17 +145,23 @@ export const api = {
     riskColor: string;
     last7DaysHistory: Array<{ date: string; rainfallMm: number }>;
     timestamp: string;
-    fallback?: boolean;
+    provider?: string;
+    isCached?: boolean;
+    isStale?: boolean;
+    providerStatus?: string;
+    error?: string;
+    message?: string;
   }> => {
     const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
     if (districtName) params.set('districtName', districtName);
+    if (refresh) params.set('refresh', 'true');
     const res = await axios.get(`${API_BASE}/realtime/today-rainfall?${params}`);
     return res.data;
   },
 
   // Early Warning & Pre-Flood Precaution Forecast
-  getEarlyWarningForecast: async (districtId: string): Promise<any> => {
-    const res = await axios.get(`${API_BASE}/realtime/early-warning/${encodeURIComponent(districtId)}`);
+  getEarlyWarningForecast: async (districtId: string, refresh = false): Promise<any> => {
+    const res = await axios.get(`${API_BASE}/realtime/early-warning/${encodeURIComponent(districtId)}${refresh ? '?refresh=true' : ''}`);
     return res.data;
   }
 };

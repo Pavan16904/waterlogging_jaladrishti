@@ -77,7 +77,7 @@ export const RadarPlaybackBar: React.FC<RadarPlaybackBarProps> = ({
           </span>
           <div className="flex items-center gap-1.5 font-bold tracking-tight text-cyan-400">
             <Radio className="w-4 h-4 text-cyan-400 animate-spin" style={{ animationDuration: '4s' }} />
-            <span>LIVE DOPPLER RADAR SWEEP</span>
+            <span>WEATHER LAYER &bull; DOPPLER PRECIPITATION SWEEP</span>
           </div>
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-mono">
             {frames.length} sweeps
@@ -157,15 +157,20 @@ export const RadarPlaybackBar: React.FC<RadarPlaybackBarProps> = ({
         </button>
       </div>
 
-      {/* Radar Reflectivity Legend */}
-      <div className="mt-2.5 pt-2 border-t border-white/10 flex items-center justify-between text-[9px] text-slate-400">
-        <span className="font-semibold text-slate-300">Precipitation dBZ:</span>
-        <div className="flex items-center gap-1.5 font-mono">
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2 rounded bg-cyan-400"></span> Light (5-15)</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2 rounded bg-emerald-400"></span> Moderate (15-30)</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2 rounded bg-amber-400"></span> Heavy (30-45)</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2 rounded bg-red-500"></span> Severe Storm (&gt;45)</span>
+      {/* Radar Reflectivity Legend & Layer Distinction Notice */}
+      <div className="mt-2.5 pt-2 border-t border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 text-[9px] text-slate-400">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="font-semibold text-slate-300">Weather Radar (dBZ):</span>
+          <div className="flex items-center gap-1.5 font-mono">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2 rounded bg-cyan-400"></span> Light (5-15)</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2 rounded bg-emerald-400"></span> Moderate (15-30)</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2 rounded bg-amber-400"></span> Heavy (30-45)</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2 rounded bg-red-500"></span> Storm (&gt;45)</span>
+          </div>
         </div>
+        <span className="text-[8px] text-slate-400 italic">
+          Meteorological weather layer &bull; Separate from ground-measured water levels
+        </span>
       </div>
     </div>
   );

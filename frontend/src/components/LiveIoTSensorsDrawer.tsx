@@ -78,18 +78,18 @@ export const LiveIoTSensorsDrawer: React.FC<LiveIoTSensorsDrawerProps> = ({
         <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950/50">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-cyan-500/10 text-cyan-500 border border-cyan-500/30">
-              <Radio className="w-6 h-6 animate-pulse" />
+              <Radio className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black tracking-tight">Live IoT Flood Sensors</h2>
-                <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wider">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                  Telemetry Stream Active
+                <h2 className="text-lg font-black tracking-tight">IoT Sensors (Hardware Prototype Demo)</h2>
+                <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase tracking-wider">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                  Synthetic Simulation View
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Ultrasonic underpass sumps, lake outfall inverts, and automated pump actuators
+                Laboratory hardware prototype: Simulated ultrasonic sumps and pump actuators
               </p>
             </div>
           </div>
@@ -98,7 +98,7 @@ export const LiveIoTSensorsDrawer: React.FC<LiveIoTSensorsDrawerProps> = ({
             <button
               onClick={onRefresh}
               className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
-              title="Refresh Telemetry"
+              title="Refresh Simulated Telemetry"
             >
               <RotateCw className="w-4 h-4" />
             </button>
@@ -111,16 +111,27 @@ export const LiveIoTSensorsDrawer: React.FC<LiveIoTSensorsDrawerProps> = ({
           </div>
         </div>
 
+        {/* Clear Simulation Notice Banner */}
+        <div className="mx-5 mt-4 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-2.5">
+          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold text-amber-300 block">Demonstration & Prototype Evaluation Only</span>
+            <p className="text-[11px] text-amber-200/90 mt-0.5 leading-relaxed">
+              Readings, sump depths, and actuator triggers below are synthetic simulated values for bench testing. They are NOT live field measurements.
+            </p>
+          </div>
+        </div>
+
         {/* Top Metric Cards */}
         <div className="p-5 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-100/60 dark:bg-slate-950/30 border-b border-slate-200 dark:border-slate-800">
           <div className="p-3 rounded-xl bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 shadow-sm">
-            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block">Online Sensors</span>
+            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block">Simulated Nodes</span>
             <span className="text-xl font-black text-cyan-400 font-mono">{totalSensors}</span>
-            <span className="text-[9px] text-emerald-500 block font-medium">100% Nodes Reporting</span>
+            <span className="text-[9px] text-slate-400 block font-medium">Prototype Test Nodes</span>
           </div>
 
           <div className="p-3 rounded-xl bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 shadow-sm">
-            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block">Critical Surcharge</span>
+            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block">Simulated Alarms</span>
             <span className={`text-xl font-black font-mono ${criticalAlarms.length > 0 ? 'text-red-500' : 'text-emerald-400'}`}>
               {criticalAlarms.length}
             </span>
@@ -128,9 +139,9 @@ export const LiveIoTSensorsDrawer: React.FC<LiveIoTSensorsDrawerProps> = ({
           </div>
 
           <div className="p-3 rounded-xl bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 shadow-sm">
-            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block">Active Pumps</span>
+            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block">Simulated Pumps</span>
             <span className="text-xl font-black text-amber-400 font-mono">{activePumps.length}</span>
-            <span className="text-[9px] text-amber-500/90 block font-medium">High-Head Units</span>
+            <span className="text-[9px] text-amber-500/90 block font-medium">Actuator Triggers</span>
           </div>
 
           <div className="p-3 rounded-xl bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 shadow-sm">

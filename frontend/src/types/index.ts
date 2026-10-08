@@ -25,6 +25,16 @@ export interface SeverityZone {
   ndvi?: number;
   vv_db?: number;
   vh_db?: number;
+  crop_type?: string;
+  waterlogging_status?: string;
+  source?: string;
+  source_status?: 'live' | 'delayed' | 'unavailable' | 'simulated';
+  observation_time?: string;
+  confidence?: number;
+  field_id?: string;
+  village?: string;
+  current_status?: string;
+  suggested_action?: string;
   geojson_feature: {
     type: string;
     geometry: {
@@ -196,6 +206,77 @@ export interface RadarMeta {
   smooth: number;
   snow: number;
   lastUpdated: string;
+  isCached?: boolean;
+  isStale?: boolean;
+  providerStatus?: string;
+}
+
+export interface SatelliteMeta {
+  provider: string;
+  sensor: string;
+  product: string;
+  snapshotDate: string;
+  imageryDate?: string;
+  layer?: string;
+  resolution?: string;
+  maxNativeZoom: number;
+  tileUrlTemplate: string;
+  viirsUrlTemplate?: string;
+  attribution: string;
+  coverageNotice: string;
+  cacheTtlHours: number;
+  providerStatus?: string;
+  lastUpdated?: string;
+}
+
+export interface LiveDrainageAdvisory {
+  id: string;
+  district: string;
+  districtName?: string;
+  zone_name: string;
+  guidanceType: string;
+  guidanceLevel?: string;
+  riskCategory: string;
+  riskColor: string;
+  priority: string;
+  guidanceHeadline: string;
+  diagnosis: string;
+  action_recommendation: string;
+  recommendedAction?: string;
+  urgency_score: number;
+  estimated_cost_inr: number;
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+    elevation: number;
+  };
+  metrics?: {
+    provider: string;
+    dataTimestamp: string;
+    observedRainfall24hMm: number;
+    forecastRainfall24hMm: number;
+    forecastRainfall48hMm: number;
+    soilMoistureIndex: number;
+    terrainSlope: string;
+  };
+  inputValues?: {
+    coordinates: { lat: number; lng: number };
+    observedTodayRainfallMm: number;
+    forecast24hPrecipMm: number;
+    peakHourlyForecastMm: number;
+    currentRainRateMm: number;
+    elevationM: number;
+    agroZone: string;
+    primaryCrops: string[];
+  };
+  provider: string;
+  dataTimestamp: string;
+  advisoryTimestamp?: string;
+  disclaimer: string;
+  advisoryUpdatedAt?: string;
+  isCached?: boolean;
+  isStale?: boolean;
+  providerStatus?: string;
 }
 
 export interface LiveAlert {
