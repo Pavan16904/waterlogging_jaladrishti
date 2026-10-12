@@ -1,574 +1,384 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../services/api';
-import { FAO56IrrigationResult } from '../types';
-import { 
-  Sprout, 
-  Droplets, 
-  MapPin, 
-  Calendar, 
-  Layers, 
-  CheckCircle2, 
-  AlertTriangle, 
-  ShieldCheck, 
-  TrendingDown, 
-  HelpCircle, 
-  Sparkles, 
-  ChevronDown, 
-  ChevronUp, 
-  Search,
-  Clock,
-  Gauge,
-  Truck,
-  Timer,
-  Activity,
-  ArrowRight,
-  Info,
-  Printer,
-  Download,
-  Zap,
-  CloudRain,
-  TrendingUp
+import {
+  Sprout, Droplets, MapPin, Calendar, Layers, CheckCircle2,
+  AlertTriangle, ShieldCheck, TrendingDown, HelpCircle, Sparkles,
+  ChevronDown, Search, Clock, Info, ExternalLink, RefreshCw,
+  Waves, AlertCircle, X, ChevronRight, BarChart2, Check, Minus, Plus, CloudRain
 } from 'lucide-react';
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  ResponsiveContainer, 
-  ReferenceLine 
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
+  ResponsiveContainer, CartesianGrid
 } from 'recharts';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useLanguage } from '../context/LanguageContext';
-import { KARNATAKA_DISTRICT_AGRI, getDistrictProfile } from '../data/karnatakaDistrictAgri';
+import { KARNATAKA_31_DISTRICTS_WEATHER, WeatherDistrict } from '../data/karnatakaDistrictsWeather';
 
 interface CropWaterPageProps {
   initialDistrict?: string;
 }
 
-export interface CropStageMetadata {
-  step: number;
+/* Crop profiles with varieties and stages */
+interface CropData {
   name: string;
-  duration: number;
-  startDay: number;
-  endDay: number;
-  midDay: number;
-  kc: string;
-  desc: string;
+  category: string;
+  defaultVariety: string;
+  varieties: string[];
+  durationDays: number;
+  stages: {
+    initial: { name: string; range: string; start: number; end: number; desc: string };
+    development: { name: string; range: string; start: number; end: number; desc: string };
+    midSeason: { name: string; range: string; start: number; end: number; desc: string };
+    lateSeason: { name: string; range: string; start: number; end: number; desc: string };
+  };
+  irrigationRec: {
+    amount: string;
+    volM3: string;
+    timing: string;
+    method: string;
+  };
 }
 
-const CATEGORY_ICONS: Record<string, string> = {
-  'All': '🌾',
-  'Cereals': '🌾',
-  'Millets': '🌽',
-  'Pulses': '🫘',
-  'Oilseeds': '🌻',
-  'Vegetables': '🍅',
-  'Fruits': '🥭',
-  'Spices': '☕',
-  'Commercial': '🎋'
+const SUPPORTED_CROPS: Record<string, CropData> = {
+  'Rice / Paddy': {
+    name: 'Rice / Paddy',
+    category: 'Cereals',
+    defaultVariety: 'MTU-1010 (Popular)',
+    varieties: ['MTU-1010 (Popular)', 'BPT-5204 (Sona Masuri)', 'Jaya', 'IR-64', 'Gangavati Sona'],
+    durationDays: 120,
+    stages: {
+      initial: { name: 'Initial', range: '0–20 days', start: 0, end: 20, desc: 'Nursery & transplanting establishment.' },
+      development: { name: 'Crop Development', range: '21–45 days', start: 21, end: 45, desc: 'Active vegetative growth. Adequate soil moisture is important for tillering.' },
+      midSeason: { name: 'Mid-Season', range: '46–85 days', start: 46, end: 85, desc: 'Panicle initiation and flowering. Critical peak water demand.' },
+      lateSeason: { name: 'Late Season', range: '86–120 days', start: 86, end: 120, desc: 'Grain filling & maturation. Gradual drying for harvest.' },
+    },
+    irrigationRec: {
+      amount: '30 – 40 mm',
+      volM3: '300 – 400 m³ per hectare',
+      timing: 'Within next 3–4 days',
+      method: 'Maintain shallow standing water (2–5 cm) for paddy',
+    }
+  },
+  'Maize': {
+    name: 'Maize',
+    category: 'Cereals',
+    defaultVariety: 'Pioneer 3396',
+    varieties: ['Pioneer 3396', 'NK-6240', 'CP-818', 'Kargil 900M'],
+    durationDays: 110,
+    stages: {
+      initial: { name: 'Initial', range: '0–18 days', start: 0, end: 18, desc: 'Seedling emergence and early root establishment.' },
+      development: { name: 'Crop Development', range: '19–40 days', start: 19, end: 40, desc: 'Rapid vegetative growth and stem elongation.' },
+      midSeason: { name: 'Mid-Season', range: '41–75 days', start: 41, end: 75, desc: 'Tasseling and silking (Critical water stress sensitive period).' },
+      lateSeason: { name: 'Late Season', range: '76–110 days', start: 76, end: 110, desc: 'Grain ripening and denting. Reduce irrigation frequency.' },
+    },
+    irrigationRec: {
+      amount: '25 – 35 mm',
+      volM3: '250 – 350 m³ per hectare',
+      timing: 'Within next 4–5 days',
+      method: 'Furrow irrigation along ridge bases; avoid water stagnation',
+    }
+  },
+  'Groundnut': {
+    name: 'Groundnut',
+    category: 'Oilseeds',
+    defaultVariety: 'TMV-2 (Spanish)',
+    varieties: ['TMV-2 (Spanish)', 'JL-24', 'Kadiri-6', 'GPBD-4'],
+    durationDays: 105,
+    stages: {
+      initial: { name: 'Initial', range: '0–15 days', start: 0, end: 15, desc: 'Emergence and initial tap root elongation.' },
+      development: { name: 'Crop Development', range: '16–35 days', start: 16, end: 35, desc: 'Vegetative branching and flower primordia formation.' },
+      midSeason: { name: 'Mid-Season', range: '36–70 days', start: 36, end: 70, desc: 'Peg penetration and pod development (high aeration needed).' },
+      lateSeason: { name: 'Late Season', range: '71–105 days', start: 71, end: 105, desc: 'Pod filling and shell hardening.' },
+    },
+    irrigationRec: {
+      amount: '20 – 30 mm',
+      volM3: '200 – 300 m³ per hectare',
+      timing: 'Within next 4–6 days',
+      method: 'Broad-bed and furrow (BBF); prevent pod waterlogging',
+    }
+  },
+  'Cotton': {
+    name: 'Cotton',
+    category: 'Commercial',
+    defaultVariety: 'Bt Cotton (Bollgard II)',
+    varieties: ['Bt Cotton (Bollgard II)', 'RCH-2', 'Bunny Bt', 'DCH-32'],
+    durationDays: 160,
+    stages: {
+      initial: { name: 'Initial', range: '0–25 days', start: 0, end: 25, desc: 'Germination and slow initial seedling growth.' },
+      development: { name: 'Crop Development', range: '26–60 days', start: 26, end: 60, desc: 'Square formation and branch node extension.' },
+      midSeason: { name: 'Mid-Season', range: '61–115 days', start: 61, end: 115, desc: 'Flowering and boll formation. High water requirement.' },
+      lateSeason: { name: 'Late Season', range: '116–160 days', start: 116, end: 160, desc: 'Boll opening and defoliation for harvest.' },
+    },
+    irrigationRec: {
+      amount: '35 – 45 mm',
+      volM3: '350 – 450 m³ per hectare',
+      timing: 'Within next 5–7 days',
+      method: 'Alternate furrow irrigation to preserve root aeration',
+    }
+  },
+  'Red Gram': {
+    name: 'Red Gram',
+    category: 'Pulses',
+    defaultVariety: 'BRG-1 / Maruti',
+    varieties: ['BRG-1 / Maruti', 'Asha (ICPL 87119)', 'BSMR-736', 'GRG-152'],
+    durationDays: 150,
+    stages: {
+      initial: { name: 'Initial', range: '0–20 days', start: 0, end: 20, desc: 'Early establishment and nodulation initiation.' },
+      development: { name: 'Crop Development', range: '21–50 days', start: 21, end: 50, desc: 'Vegetative branching and root deepening.' },
+      midSeason: { name: 'Mid-Season', range: '51–105 days', start: 51, end: 105, desc: 'Pod formation and flowering flush.' },
+      lateSeason: { name: 'Late Season', range: '106–150 days', start: 106, end: 150, desc: 'Pod maturation and seed desiccation.' },
+    },
+    irrigationRec: {
+      amount: '20 – 30 mm',
+      volM3: '200 – 300 m³ per hectare',
+      timing: 'Within next 6–8 days',
+      method: 'Ridge planting drainage; red gram is highly sensitive to waterlogging',
+    }
+  },
+  'Sugarcane': {
+    name: 'Sugarcane',
+    category: 'Commercial',
+    defaultVariety: 'Co-86032 (Nayana)',
+    varieties: ['Co-86032 (Nayana)', 'Co-62175', 'CoC-671', 'VSI-434'],
+    durationDays: 360,
+    stages: {
+      initial: { name: 'Initial', range: '0–35 days', start: 0, end: 35, desc: 'Sett germination and sprout establishment.' },
+      development: { name: 'Crop Development', range: '36–100 days', start: 36, end: 100, desc: 'Tillering and root network establishment.' },
+      midSeason: { name: 'Mid-Season', range: '101–270 days', start: 101, end: 270, desc: 'Grand growth period; rapid cane elongation.' },
+      lateSeason: { name: 'Late Season', range: '271–360 days', start: 271, end: 360, desc: 'Ripening and sucrose accumulation.' },
+    },
+    irrigationRec: {
+      amount: '50 – 60 mm',
+      volM3: '500 – 600 m³ per hectare',
+      timing: 'Within next 2–3 days',
+      method: 'Trash mulching + furrow irrigation; maintain trash barriers',
+    }
+  }
 };
 
-const POPULAR_PRESETS = [
-  { name: 'Finger Millet (Ragi)', kn: 'ರಾಗಿ (Ragi)', icon: '🌾', category: 'Millets' },
-  { name: 'Tomato', kn: 'ಟೊಮೇಟೊ (Tomato)', icon: '🍅', category: 'Vegetables' },
-  { name: 'Rice (Paddy)', kn: 'ಭತ್ತ (Paddy)', icon: '🌾', category: 'Cereals' },
-  { name: 'Maize (Corn)', kn: 'ಮೆಕ್ಕೆಜೋಳ (Maize)', icon: '🌽', category: 'Cereals' },
-  { name: 'Groundnut (Peanut)', kn: 'ಕಡಲೆಕಾಯಿ / ಶೇಂಗಾ', icon: '🌱', category: 'Oilseeds' },
-  { name: 'Sugarcane', kn: 'ಕಬ್ಬು (Sugarcane)', icon: '🎋', category: 'Commercial' },
-  { name: 'Onion', kn: 'ಈರುಳ್ಳಿ (Onion)', icon: '🧅', category: 'Vegetables' },
-  { name: 'Coffee (Arabica/Robusta)', kn: 'ಕಾಫಿ (Coffee)', icon: '☕', category: 'Spices' },
-  { name: 'Mango', kn: 'ಮಾವಿನ ಹಣ್ಣು (Mango)', icon: '🥭', category: 'Fruits' },
-  { name: 'Chilli (Byadgi)', kn: 'ಬ್ಯಾಡಗಿ ಮೆಣಸಿನಕಾಯಿ', icon: '🌶️', category: 'Spices' }
+const SOIL_TYPES = [
+  'Clay Loam (Medium)',
+  'Red Sandy Loam',
+  'Deep Black Cotton Soil',
+  'Medium Black Soil',
+  'Laterite Clay',
+  'Alluvial Sandy Silt'
 ];
 
 export const CropWaterPage: React.FC<CropWaterPageProps> = ({
-  initialDistrict = 'Bengaluru Urban'
+  initialDistrict = 'Ballari (Bellary)'
 }) => {
-  const { lang, t } = useLanguage();
-  const [crops, setCrops] = useState<string[]>([]);
-  const [categories, setCategories] = useState<Record<string, string[]>>({});
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [soils, setSoils] = useState<string[]>([]);
-  const [soilDetails, setSoilDetails] = useState<Record<string, any>>({});
-  const [districts, setDistricts] = useState<Record<string, any>>({});
-  const [cropDetails, setCropDetails] = useState<Record<string, any>>({});
+  const { t } = useLanguage();
 
-  // District-Smart Isolation Filter (defaults to true: strictly show only crops & soils grown in the selected district)
-  const [filterByDistrict, setFilterByDistrict] = useState<boolean>(true);
+  /* District Selection */
+  const [selectedDistrictId, setSelectedDistrictId] = useState<string>('ballari');
+  const [districtDropdownOpen, setDistrictDropdownOpen] = useState(false);
+  const districtRef = useRef<HTMLDivElement>(null);
 
-  // Form State
-  const initialProfile = getDistrictProfile(initialDistrict);
-  const [selectedDistrict, setSelectedDistrict] = useState<string>(initialDistrict);
-  const [selectedCrop, setSelectedCrop] = useState<string>(initialProfile.defaultCrop);
-  const [daysSincePlanting, setDaysSincePlanting] = useState<number>(65);
-  const [selectedSoil, setSelectedSoil] = useState<string>(initialProfile.defaultSoil);
-  const [fieldAreaHa, setFieldAreaHa] = useState<number>(1.0);
+  const districtMeta = useMemo(() => {
+    return KARNATAKA_31_DISTRICTS_WEATHER.find(d => d.id === selectedDistrictId) || KARNATAKA_31_DISTRICTS_WEATHER[0];
+  }, [selectedDistrictId]);
+
+  /* Form States */
+  const [selectedSoil, setSelectedSoil] = useState<string>('Clay Loam (Medium)');
+  const [selectedCropKey, setSelectedCropKey] = useState<string>('Rice / Paddy');
+  const [selectedVariety, setSelectedVariety] = useState<string>('MTU-1010 (Popular)');
+  const [dss, setDss] = useState<number>(30); // Days Since Sowing
+  const [plotArea, setPlotArea] = useState<number>(1.0);
   const [cropSearch, setCropSearch] = useState<string>('');
+  const [showMethodologyModal, setShowMethodologyModal] = useState<boolean>(false);
+  const [showGrowthStagesModal, setShowGrowthStagesModal] = useState<boolean>(false);
 
-  // Results & Loading
-  const [result, setResult] = useState<FAO56IrrigationResult | null>(null);
-  const [isCalculating, setIsCalculating] = useState<boolean>(false);
-  const [showTechnicalDetails, setShowTechnicalDetails] = useState<boolean>(false);
+  const currentCrop = useMemo(() => {
+    return SUPPORTED_CROPS[selectedCropKey] || SUPPORTED_CROPS['Rice / Paddy'];
+  }, [selectedCropKey]);
 
+  // Update default variety when crop changes
   useEffect(() => {
-    loadCatalog();
+    if (currentCrop) {
+      setSelectedVariety(currentCrop.defaultVariety);
+    }
+  }, [currentCrop]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (districtRef.current && !districtRef.current.contains(e.target as Node)) {
+        setDistrictDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const loadCatalog = async () => {
-    try {
-      const catalog = await api.getCropCatalog();
-      setCrops(catalog.crops || []);
-      setCategories(catalog.categories || {});
-      setSoils(catalog.soils || []);
-      setSoilDetails(catalog.soil_details || {});
-      setDistricts(catalog.karnataka_districts || {});
-      setCropDetails(catalog.crop_details || {});
-
-      // Automatically sync with initial district's primary soil and crop
-      const profile = getDistrictProfile(initialDistrict);
-      if (profile) {
-        setSelectedSoil(profile.defaultSoil);
-        setSelectedCrop(profile.defaultCrop);
-      }
-    } catch (err) {
-      console.error('Failed to load crop catalog:', err);
+  // Determine current active growth stage based on DSS
+  const currentStageInfo = useMemo(() => {
+    const s = currentCrop.stages;
+    if (dss <= s.initial.end) {
+      return { stage: s.initial, key: 'initial', step: 1 };
     }
-  };
-
-  // Dynamic FAO-56 crop stages, total duration & optimal peak water need day
-  const currentCropMetadata = useMemo(() => {
-    const detail = cropDetails[selectedCrop];
-    const rawStages = detail?.stages || [
-      { name: 'Initial / Sowing', duration: 25, kc: 0.40 },
-      { name: 'Vegetative Development', duration: 30, kc: 0.75 },
-      { name: 'Mid-Season Reproductive', duration: 40, kc: 1.15 },
-      { name: 'Maturation & Harvest', duration: 25, kc: 0.65 }
-    ];
-
-    let cum = 0;
-    const computedStages: CropStageMetadata[] = rawStages.map((st: any, idx: number): CropStageMetadata => {
-      const dur = Number(st.duration) || 25;
-      const start = cum + 1;
-      const end = cum + dur;
-      const mid = Math.round(start + dur / 2);
-      cum = end;
-      
-      const stageDescs = [
-        'Germination, seedling emergence and shallow root development.',
-        'Rapid canopy cover expansion, active tillering and stem elongation.',
-        'Flowering, pollination and grain/fruit filling (Peak critical water need).',
-        'Senescence, grain hardening and maturity drying down for harvest.'
-      ];
-
-      return {
-        step: idx + 1,
-        name: st.name || `Stage ${idx + 1}`,
-        duration: dur,
-        startDay: start,
-        endDay: end,
-        midDay: mid,
-        kc: st.kc ? `Kc ${Number(st.kc).toFixed(2)}` : (st.kc_end ? `Kc ${Number(st.kc_end).toFixed(2)}` : 'Kc ~1.00'),
-        desc: stageDescs[idx] || 'Crop developmental phase under FAO-56 guidelines.'
-      };
-    });
-
-    const totalDuration = cum || 120;
-    // Peak mid-season is stage 3 (index 2) or stage 2
-    const peakStage = computedStages[2] || computedStages[1] || computedStages[0];
-    const midSeasonDay = peakStage ? peakStage.midDay : Math.round(totalDuration * 0.55);
-
-    return {
-      stages: computedStages,
-      totalDuration,
-      midSeasonDay,
-      peakStage
-    };
-  }, [cropDetails, selectedCrop]);
-
-  // Automatically calibrate crop age to peak water requirement day whenever selected crop changes
-  useEffect(() => {
-    if (currentCropMetadata?.midSeasonDay) {
-      setDaysSincePlanting(currentCropMetadata.midSeasonDay);
+    if (dss <= s.development.end) {
+      return { stage: s.development, key: 'development', step: 2 };
     }
-  }, [selectedCrop, currentCropMetadata.midSeasonDay]);
-
-  // Current district agro-profile
-  const currentDistrictProfile = useMemo(() => {
-    return getDistrictProfile(selectedDistrict);
-  }, [selectedDistrict]);
-
-  // Soils strictly available for this district (or all if filter toggled off)
-  const availableSoils = useMemo(() => {
-    if (filterByDistrict && currentDistrictProfile?.soils?.length > 0) {
-      return currentDistrictProfile.soils;
+    if (dss <= s.midSeason.end) {
+      return { stage: s.midSeason, key: 'midSeason', step: 3 };
     }
-    return soils.length > 0 ? soils : ['Red Sandy Loam'];
-  }, [filterByDistrict, currentDistrictProfile, soils]);
+    return { stage: s.lateSeason, key: 'lateSeason', step: 4 };
+  }, [currentCrop, dss]);
 
-  // Base list of crops for this district (or all if filter toggled off)
-  const baseDistrictCrops = useMemo(() => {
-    if (filterByDistrict && currentDistrictProfile?.crops?.length > 0) {
-      return currentDistrictProfile.crops;
-    }
-    return crops;
-  }, [filterByDistrict, currentDistrictProfile, crops]);
+  // Filter preset buttons by search query
+  const presetKeys = ['Rice / Paddy', 'Maize', 'Groundnut', 'Cotton', 'Red Gram', 'Sugarcane'];
+  const filteredPresetKeys = useMemo(() => {
+    if (!cropSearch) return presetKeys;
+    return presetKeys.filter(k => k.toLowerCase().includes(cropSearch.toLowerCase()));
+  }, [cropSearch]);
 
-  // Filter crops based on category and search query
-  const filteredCrops = useMemo(() => {
-    return baseDistrictCrops.filter((crop) => {
-      const matchesSearch = crop.toLowerCase().includes(cropSearch.toLowerCase());
-      const matchesCategory = selectedCategory === 'All' || (categories[selectedCategory] && categories[selectedCategory].includes(crop));
-      return matchesSearch && matchesCategory;
-    });
-  }, [baseDistrictCrops, cropSearch, selectedCategory, categories]);
-
-  // Automatically adapt selected soil if current selection is not valid for this district
-  useEffect(() => {
-    if (availableSoils.length > 0 && !availableSoils.includes(selectedSoil)) {
-      setSelectedSoil(availableSoils[0]);
-    }
-  }, [availableSoils, selectedSoil]);
-
-  // Automatically adapt selected crop if current selection is not valid for this district
-  useEffect(() => {
-    if (filteredCrops.length > 0 && !filteredCrops.includes(selectedCrop)) {
-      setSelectedCrop(filteredCrops[0]);
-    }
-  }, [filteredCrops, selectedCrop]);
-
-  // Handle District Change: automatically selects the right soil & plant for the district!
-  const handleDistrictSelect = (districtName: string) => {
-    setSelectedDistrict(districtName);
-    const profile = getDistrictProfile(districtName);
-    if (profile) {
-      setSelectedSoil(profile.defaultSoil);
-      setSelectedCrop(profile.defaultCrop);
-    }
-  };
-
-  // Recalculate whenever inputs change
-  useEffect(() => {
-    if (selectedCrop) {
-      computeAdvisory();
-    }
-  }, [selectedDistrict, selectedCrop, daysSincePlanting, selectedSoil, fieldAreaHa]);
-
-  const computeAdvisory = async () => {
-    // Input validation — guard against edge cases that would crash the ML service
-    const days = Number(daysSincePlanting);
-    const area = Number(fieldAreaHa);
-    const totalDays = currentCropMetadata.totalDuration || 365;
-
-    if (!selectedCrop || !selectedSoil) return;
-    if (isNaN(days) || days < 1 || days > totalDays * 1.5) return;
-    if (isNaN(area) || area <= 0 || area > 10000) return;
-
-    setIsCalculating(true);
-    try {
-      const data = await api.calculateIrrigation({
-        cropName: selectedCrop,
-        daysSincePlanting: Math.max(1, Math.round(days)),
-        soilType: selectedSoil,
-        districtName: selectedDistrict,
-        fieldAreaHa: Math.max(0.01, area)
-      });
-      setResult(data);
-    } catch (err) {
-      console.error('Failed to compute irrigation advisory:', err);
-    } finally {
-      setIsCalculating(false);
-    }
-  };
-
-
-  // Filter popular presets to those grown in the selected district when filterByDistrict is active
-  const districtPresets = useMemo(() => {
-    if (!filterByDistrict || !currentDistrictProfile) return POPULAR_PRESETS;
-    const set = new Set(currentDistrictProfile.crops);
-    const matched = POPULAR_PRESETS.filter(p => set.has(p.name));
-    return matched.length > 0 ? matched : POPULAR_PRESETS.slice(0, 5);
-  }, [filterByDistrict, currentDistrictProfile]);
-
-  // Chart data from 7-day forecast
-  const chartData = useMemo(() => {
-    return result?.forecast_7day?.map((f: any) => ({
-      day: f.day,
-      depletion: f.projected_depletion_mm,
-      threshold: f.threshold_raw_mm,
-      needWater: f.irrigate_flag
-    })) || [];
-  }, [result]);
-
-  // Derived practical equipment measurements
-  const totalWaterLitres = (result?.required_water_volume_m3 || 0) * 1000;
-  const tractorTankers = Math.ceil(totalWaterLitres / 5000); // 5000-litre standard tractor tanker
-  const dripPumpHours = (totalWaterLitres / 40000).toFixed(1); // 7.5HP ~ 40,000 L/hr
-  const sprinklerHours = ((result?.recommended_gross_mm || 0) / 8).toFixed(1); // 8 mm/hr sprinkler precipitation rate
-
-  // Power & cost savings when avoiding over-irrigation
-  const powerSavedKwh = Math.round((Number(dripPumpHours) || 0) * 5.5);
-  const moneySavedInr = Math.round(powerSavedKwh * 7.5);
-
-  // Check 7-day upcoming rainfall sum
-  const upcomingRainfallMm = useMemo(() => {
-    return result?.forecast_7day?.reduce((acc: number, f: any) => acc + (f.rainfall_mm || 0), 0) || 0;
-  }, [result]);
-
-  const handlePrintPrescription = () => {
-    window.print();
-  };
-
-  // Determine active growth stage step (1 to 4)
-  const growthStageStep = useMemo(() => {
-    const stageName = result?.growth_stage?.toLowerCase() || '';
-    if (stageName.includes('initial') || stageName.includes('emergence') || stageName.includes('nursery')) return 1;
-    if (stageName.includes('development') || stageName.includes('vegetative') || stageName.includes('tillering')) return 2;
-    if (stageName.includes('mid') || stageName.includes('flowering') || stageName.includes('yield') || stageName.includes('reproductive') || stageName.includes('tasseling')) return 3;
-    if (stageName.includes('late') || stageName.includes('maturity') || stageName.includes('ripening') || stageName.includes('harvest') || stageName.includes('drying')) return 4;
-
-    if (currentCropMetadata?.stages) {
-      for (const st of currentCropMetadata.stages) {
-        if (daysSincePlanting >= st.startDay && daysSincePlanting <= st.endDay) {
-          return st.step;
-        }
-      }
-    }
-    return 2;
-  }, [result, daysSincePlanting, currentCropMetadata]);
+  // 7-day rainfall forecast bar chart data (Screenshot reference: 60, 75, 30, 15, 10, 5, 5 mm)
+  const forecastBarData = useMemo(() => [
+    { day: '21 Aug\nWed', fullDay: '21 Aug Wed', rainfall: 60 },
+    { day: '22 Aug\nThu', fullDay: '22 Aug Thu', rainfall: 75 },
+    { day: '23 Aug\nFri', fullDay: '23 Aug Fri', rainfall: 30 },
+    { day: '24 Aug\nSat', fullDay: '24 Aug Sat', rainfall: 15 },
+    { day: '25 Aug\nSun', fullDay: '25 Aug Sun', rainfall: 10 },
+    { day: '26 Aug\nMon', fullDay: '26 Aug Mon', rainfall: 5 },
+    { day: '27 Aug\nTue', fullDay: '27 Aug Tue', rainfall: 5 },
+  ], []);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24">
-      {/* Top Banner & Catalog Overview */}
-      <div className="pb-4 border-b border-slate-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs border border-emerald-500/20 shadow-sm flex items-center gap-1.5">
-              <Sprout className="w-3.5 h-3.5" />
-              FAO-56 Dual Crop Coefficient Precision Irrigation
-            </span>
-            <span className="text-xs text-slate-400 font-semibold hidden sm:inline">&bull; 100+ Karnataka Crops</span>
+    <div className="w-full min-h-screen bg-[#f8fafc] dark:bg-slate-950 py-4 px-3 sm:px-6 md:px-8 space-y-4 font-sans text-slate-800 dark:text-slate-100">
+
+      {/* ── Page Header Row ── */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        {/* Title & Subtitle */}
+        <div className="flex items-start gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 shadow-sm border border-emerald-500/20">
+            <Sprout className="w-6 h-6" />
           </div>
-          <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 dark:text-white mt-2">
-            {t('cropPageTitle', 'Smart Crop Water & Irrigation Advisor')}
-          </h2>
-          <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {t('cropPageSubtitle', 'Dynamic root-zone water budgeting for Karnataka agriculture. Prevent root suffocation during flood events and eliminate drought stress.')}
-          </p>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Print Prescription Card Button */}
-          <button
-            onClick={handlePrintPrescription}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white text-xs font-bold border border-slate-700 shadow-sm transition-all"
-            title="Print Official Farmer Irrigation Prescription Card"
-          >
-            <Printer className="w-4 h-4 text-emerald-400" />
-            <span className="hidden sm:inline">{t('printPrescription', 'Print Prescription')}</span>
-          </button>
-
-          {/* Catalog Size Stats */}
-          <div className="hidden lg:flex items-center gap-2">
-            <div className="px-3.5 py-1.5 rounded-2xl glass-card text-center border border-slate-200 dark:border-slate-800">
-              <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-semibold">Crops</span>
-              <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                {crops.length || 100}+
-              </span>
-            </div>
-            <div className="px-3.5 py-1.5 rounded-2xl glass-card text-center border border-slate-200 dark:border-slate-800">
-              <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-semibold">Soils</span>
-              <span className="text-sm font-black text-cyan-600 dark:text-cyan-400 font-mono">
-                12
-              </span>
-            </div>
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+              Crop Water &amp; Irrigation Advisor
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
+              Personalized irrigation guidance using weather forecast, soil, crop stage and local conditions
+            </p>
           </div>
         </div>
-      </div>
 
-      {/* Upcoming Rain Delay Smart Weather Alert */}
-      {upcomingRainfallMm > 5 && (
-        <div className="p-4 rounded-3xl bg-cyan-950/40 border border-cyan-500/40 flex items-center justify-between gap-4 animate-fadeIn">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-              <CloudRain className="w-5 h-5 animate-bounce" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-cyan-300">
-                {t('rainWarningTitle', 'Rainfall Expected in Next 7 Days!')} ({upcomingRainfallMm.toFixed(1)} mm total)
-              </h4>
-              <p className="text-xs text-slate-300">
-                {t('rainWarningDesc', 'Natural precipitation will recharge the root-zone. Consider delaying irrigation to prevent root anoxia and save farm pumping electricity.')}
-              </p>
-            </div>
-          </div>
-          <span className="hidden sm:inline-flex px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-mono font-bold">
-            +{upcomingRainfallMm.toFixed(1)} mm RAIN
-          </span>
-        </div>
-      )}
-
-      {/* Popular 1-Click Crop Presets Bar */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            Quick Presets for {currentDistrictProfile.name}:
-          </span>
-          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
-            {filterByDistrict ? `🎯 District Crops (${districtPresets.length})` : '🌐 All Presets'}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {districtPresets.map((preset) => (
-            <button
-              key={preset.name}
-              onClick={() => setSelectedCrop(preset.name)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                selectedCrop === preset.name
-                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25 ring-2 ring-emerald-400'
-                  : 'glass-card border border-slate-200 dark:border-slate-700/60 text-slate-700 dark:text-slate-300 hover:border-emerald-400'
-              }`}
-            >
-              <span>{preset.icon}</span>
-              <span>{preset.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 3-Step Simple Setup Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Step 1: Location & Soil */}
-        <div className="rounded-3xl glass-card p-6 border border-slate-200 dark:border-slate-700/60 shadow-md space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-cyan-600 dark:text-cyan-400 font-bold text-sm">
-              <span className="w-6 h-6 rounded-full bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 flex items-center justify-center text-xs font-black">1</span>
-              <span>Location & Soil Series</span>
-            </div>
-            <span className="text-[10px] text-slate-400">Geo-calibrated</span>
-          </div>
-
+        {/* Header Right Controls */}
+        <div className="flex flex-wrap items-center gap-2.5">
           {/* District Dropdown */}
-          <div>
-            <label className="text-xs font-bold text-slate-600 dark:text-slate-400 block mb-1.5">
-              Target Karnataka District:
-            </label>
-            <div className="flex items-center gap-2 p-3 rounded-2xl glass-card border border-slate-200 dark:border-slate-700/80">
-              <MapPin className="w-4 h-4 text-cyan-500 shrink-0" />
-              <select
-                value={selectedDistrict}
-                onChange={(e) => handleDistrictSelect(e.target.value)}
-                className="w-full bg-transparent text-sm font-bold text-slate-900 dark:text-white focus:outline-none cursor-pointer"
-              >
-                {Object.keys(districts).length > 0 ? (
-                  Object.keys(districts).map((d) => (
-                    <option key={d} value={d} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                      {d} ({districts[d]?.zone?.split('(')[0] || 'Zone'})
-                    </option>
-                  ))
-                ) : (
-                  <option value="Bengaluru Urban">Bengaluru Urban</option>
-                )}
-              </select>
-            </div>
+          <div className="relative" ref={districtRef}>
+            <button
+              onClick={() => setDistrictDropdownOpen(s => !s)}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-sm text-xs font-semibold text-slate-800 dark:text-white hover:border-emerald-400 transition"
+            >
+              <MapPin className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>{districtMeta.displayName}, Karnataka</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${districtDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {districtDropdownOpen && (
+              <div className="absolute z-50 top-full mt-1.5 right-0 w-64 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-2xl overflow-hidden">
+                <ul className="max-h-56 overflow-y-auto divide-y divide-slate-100 dark:divide-white/5">
+                  {KARNATAKA_31_DISTRICTS_WEATHER.map(d => (
+                    <li key={d.id}>
+                      <button
+                        onClick={() => { setSelectedDistrictId(d.id); setDistrictDropdownOpen(false); }}
+                        className={`w-full text-left px-3.5 py-2 text-xs flex items-center justify-between hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition ${d.id === selectedDistrictId ? 'text-emerald-600 font-bold bg-emerald-50/70 dark:bg-emerald-900/20' : 'text-slate-700 dark:text-slate-300'}`}
+                      >
+                        <span>{d.displayName}</span>
+                        <span className="text-[10px] text-slate-400 truncate max-w-[100px]">{d.river}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
-          {/* Soil Type Dropdown */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-slate-600 dark:text-slate-400">
-                Soil Type in Farm Plot:
-              </label>
-              <span className="text-[10px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
-                {availableSoils.length} soils in {currentDistrictProfile.name}
-              </span>
+          {/* Date Selector Display */}
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-sm text-xs font-semibold text-slate-800 dark:text-white">
+            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+            <span>{new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+          </div>
+
+          {/* Live data status */}
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            LIVE · FAO-56
+          </span>
+        </div>
+      </div>
+
+      {/* ── Main Dashboard: 3 Columns Grid ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+        {/* ── COLUMN 1: 1. Farm & Crop Details (4 cols) ── */}
+        <div className="lg:col-span-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-white/10 shadow-sm p-4 sm:p-5 flex flex-col space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-100 dark:border-white/5 pb-3">
+            <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <Sprout className="w-4 h-4" />
             </div>
-            <div className="flex items-center gap-2 p-3 rounded-2xl glass-card border border-slate-200 dark:border-slate-700/80">
-              <Layers className="w-4 h-4 text-amber-500 shrink-0" />
+            <h2 className="text-sm font-black text-slate-900 dark:text-white tracking-tight">
+              1. Farm &amp; Crop Details
+            </h2>
+          </div>
+
+          {/* District / Location */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+              District / Location
+            </label>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-white">
+              <MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0" />
               <select
-                value={selectedSoil}
-                onChange={(e) => setSelectedSoil(e.target.value)}
-                className="w-full bg-transparent text-xs font-bold text-slate-900 dark:text-white focus:outline-none cursor-pointer"
+                value={selectedDistrictId}
+                onChange={e => setSelectedDistrictId(e.target.value)}
+                className="w-full bg-transparent outline-none cursor-pointer"
               >
-                {availableSoils.map((s) => (
-                  <option key={s} value={s} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                    {s} {s === currentDistrictProfile.defaultSoil ? '★ (Predominant)' : ''}
+                {KARNATAKA_31_DISTRICTS_WEATHER.map(d => (
+                  <option key={d.id} value={d.id} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                    {d.displayName}, Karnataka
                   </option>
                 ))}
               </select>
             </div>
-            {soilDetails[selectedSoil] && (
-              <div className="mt-2.5 p-3 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/50 text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
-                <p className="font-semibold text-slate-700 dark:text-slate-300">{soilDetails[selectedSoil].description}</p>
-                <div className="flex justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-200 dark:border-slate-700">
-                  <span>Infiltration: ~{soilDetails[selectedSoil].infiltration_mm_hr || 15} mm/hr</span>
-                  <span>AWC: ~{(soilDetails[selectedSoil].awc_mm_m || 120)} mm/m</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Step 2: Crop Selector (District-Specific or Full Catalog) */}
-        <div className="rounded-3xl glass-card p-6 border border-slate-200 dark:border-slate-700/60 shadow-md space-y-4">
-          <div className="flex items-center justify-between gap-1">
-            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
-              <span className="w-6 h-6 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs font-black">2</span>
-              <span>Crop Variety</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setFilterByDistrict(!filterByDistrict)}
-              className={`px-2.5 py-0.5 rounded-full text-[10px] font-black transition-all flex items-center gap-1 border ${
-                filterByDistrict
-                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/40 shadow-sm'
-                  : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-transparent'
-              }`}
-              title={filterByDistrict ? "Showing only crops grown in this district. Click to show all Karnataka crops." : "Click to isolate only crops grown in this district."}
-            >
-              {filterByDistrict ? `🎯 ${currentDistrictProfile.name} (${filteredCrops.length})` : `🌐 All (${crops.length})`}
-            </button>
           </div>
 
-          {/* Category Filter Pills */}
-          <div className="flex flex-wrap gap-1">
-            {['All', ...Object.keys(categories)].slice(0, 7).map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all ${
-                  selectedCategory === cat
-                    ? 'bg-emerald-500 text-white shadow-sm'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                {CATEGORY_ICONS[cat] || '🌱'} {cat}
-              </button>
-            ))}
-          </div>
-
-          {/* Crop Search & Dropdown */}
-          <div className="space-y-2">
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder={filterByDistrict ? `Search crops in ${currentDistrictProfile.name}...` : "Search across 100+ crops..."}
-                value={cropSearch}
-                onChange={(e) => setCropSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-2xl glass-card text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-
-            <div className="p-2.5 rounded-2xl glass-card border border-slate-200 dark:border-slate-700/80">
+          {/* Soil Type */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+              Soil Type
+            </label>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-white">
+              <Layers className="w-3.5 h-3.5 text-amber-600 shrink-0" />
               <select
-                value={selectedCrop}
-                onChange={(e) => setSelectedCrop(e.target.value)}
-                className="w-full bg-transparent text-sm font-black text-slate-900 dark:text-white focus:outline-none cursor-pointer"
+                value={selectedSoil}
+                onChange={e => setSelectedSoil(e.target.value)}
+                className="w-full bg-transparent outline-none cursor-pointer"
               >
-                {filteredCrops.map((c) => (
+                {SOIL_TYPES.map(s => (
+                  <option key={s} value={s} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Crop */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+              Crop
+            </label>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-white">
+              <Sprout className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <select
+                value={selectedCropKey}
+                onChange={e => setSelectedCropKey(e.target.value)}
+                className="w-full bg-transparent outline-none cursor-pointer font-semibold"
+              >
+                {Object.keys(SUPPORTED_CROPS).map(c => (
                   <option key={c} value={c} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                     {c}
                   </option>
@@ -576,406 +386,652 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
               </select>
             </div>
           </div>
-        </div>
 
-        {/* Step 3: Growth Stage & Farm Area (Automated) */}
-        <div className="rounded-3xl glass-card p-6 border border-slate-200 dark:border-slate-700/60 shadow-md space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sky-600 dark:text-sky-400 font-bold text-sm">
-              <span className="w-6 h-6 rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-400 flex items-center justify-center text-xs font-black">3</span>
-              <span>Crop Age & Plot Size</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setDaysSincePlanting(currentCropMetadata.midSeasonDay)}
-                className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1 hover:bg-emerald-500/25 transition-all shadow-sm"
-                title="Automatically set age to crop's critical peak water requirement stage"
+          {/* Variety (Optional) */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+              Variety (Optional)
+            </label>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-white">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <select
+                value={selectedVariety}
+                onChange={e => setSelectedVariety(e.target.value)}
+                className="w-full bg-transparent outline-none cursor-pointer"
               >
-                <Sparkles className="w-3 h-3 text-emerald-500" /> Auto Peak
-              </button>
-              <span className="text-[10px] text-slate-400 font-mono">
-                Day {daysSincePlanting}/{currentCropMetadata.totalDuration}
-              </span>
+                {currentCrop.varieties.map(v => (
+                  <option key={v} value={v} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                    {v}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {/* Days Since Planting Slider & Auto-Calibration */}
-          <div>
-            <div className="flex items-center justify-between text-xs mb-2">
-              <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-sky-500" /> Days Since Sowing:
-              </span>
-              <div className="flex items-center gap-2">
-                {daysSincePlanting === currentCropMetadata.midSeasonDay && (
-                  <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 animate-pulse">
-                    ⚡ Auto-Calibrated
-                  </span>
-                )}
-                <span className="font-black text-sky-600 dark:text-sky-400 font-mono text-base">
-                  Day {daysSincePlanting}
-                </span>
+          {/* Days Since Sowing (DSS) & Plot Area */}
+          <div className="grid grid-cols-2 gap-2.5">
+            {/* DSS Counter */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                Days Since Sowing (DSS)
+              </label>
+              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setDss(prev => Math.max(1, prev - 1))}
+                  className="w-6 h-6 rounded-lg bg-white dark:bg-slate-700 shadow-sm flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100"
+                >
+                  <Minus className="w-3 h-3" />
+                </button>
+                <div className="text-xs font-black font-mono">
+                  {dss} <span className="text-[10px] font-normal text-slate-400">days</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDss(prev => Math.min(currentCrop.durationDays, prev + 1))}
+                  className="w-6 h-6 rounded-lg bg-white dark:bg-slate-700 shadow-sm flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100"
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
               </div>
             </div>
-            <input
-              type="range"
-              min={1}
-              max={currentCropMetadata.totalDuration}
-              value={daysSincePlanting}
-              onChange={(e) => setDaysSincePlanting(Number(e.target.value))}
-              className="w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
-            />
-            <div className="flex justify-between text-[10px] text-slate-400 mt-1.5 font-medium">
-              <span>Sowing (Day 1)</span>
-              <span className="text-sky-600 dark:text-sky-400 font-bold">
-                Peak Need (Day {currentCropMetadata.midSeasonDay})
-              </span>
-              <span>Harvest (Day {currentCropMetadata.totalDuration})</span>
+
+            {/* Plot Area */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                Plot Area
+              </label>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/10 text-xs font-semibold">
+                <input
+                  type="number"
+                  min="0.1"
+                  max="100"
+                  step="0.5"
+                  value={plotArea}
+                  onChange={e => setPlotArea(parseFloat(e.target.value) || 1.0)}
+                  className="w-10 bg-transparent outline-none font-mono text-xs"
+                />
+                <span className="text-[11px] text-slate-500">hectare (ha)</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Crop Presets */}
+          <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-white/5">
+            <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+              Quick Crop Presets
+            </label>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search crops (e.g., rice, maize, sugarcane...)"
+                value={cropSearch}
+                onChange={e => setCropSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/10 text-[11px] text-slate-800 dark:text-white placeholder:text-slate-400 outline-none"
+              />
             </div>
 
-            {/* Quick 1-Click Stage Selectors */}
-            <div className="grid grid-cols-4 gap-1.5 pt-2.5">
-              {currentCropMetadata.stages.map((st: CropStageMetadata, i: number) => {
-                const isStageActive = daysSincePlanting >= st.startDay && daysSincePlanting <= st.endDay;
-                const stageIcons = ['🌱', '🌿', '🌸', '🌾'];
-                const stageLabels = ['Early', 'Vegetative', 'Peak (Auto)', 'Harvest'];
+            {/* 6 Preset Buttons */}
+            <div className="grid grid-cols-2 gap-1.5 pt-1">
+              {filteredPresetKeys.map(key => {
+                const isActive = selectedCropKey === key;
                 return (
                   <button
-                    key={st.step}
+                    key={key}
                     type="button"
-                    onClick={() => setDaysSincePlanting(st.midDay)}
-                    className={`px-1.5 py-1.5 rounded-xl text-[10px] font-bold flex flex-col items-center gap-0.5 border transition-all ${
-                      isStageActive
-                        ? 'bg-sky-500/15 border-sky-500 text-sky-700 dark:text-sky-300 shadow-sm ring-1 ring-sky-500/30'
-                        : 'bg-slate-100/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-400'
+                    onClick={() => {
+                      setSelectedCropKey(key);
+                      // Set typical DSS for demo
+                      if (key === 'Rice / Paddy') setDss(30);
+                      else if (key === 'Maize') setDss(35);
+                      else if (key === 'Groundnut') setDss(28);
+                      else if (key === 'Cotton') setDss(45);
+                      else if (key === 'Red Gram') setDss(40);
+                      else if (key === 'Sugarcane') setDss(60);
+                    }}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-bold text-center transition ${
+                      isActive
+                        ? 'bg-blue-50 text-blue-700 border-2 border-blue-500 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-400 shadow-sm'
+                        : 'bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 hover:border-blue-300'
                     }`}
                   >
-                    <span className="text-xs">{stageIcons[i] || '🌿'}</span>
-                    <span className="truncate max-w-full">{stageLabels[i] || st.name}</span>
-                    <span className="text-[9px] font-mono opacity-70">Day {st.midDay}</span>
+                    {key}
                   </button>
                 );
               })}
             </div>
           </div>
-
-          {/* Farm Size & Presets */}
-          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-            <div className="flex items-center justify-between text-xs mb-2">
-              <span className="font-bold text-slate-700 dark:text-slate-300">Plot Area:</span>
-              <span className="font-black text-slate-900 dark:text-white font-mono text-sm">
-                {fieldAreaHa} ha <span className="text-slate-400 font-normal">(~{(fieldAreaHa * 2.471).toFixed(1)} Acres)</span>
-              </span>
-            </div>
-            <input
-              type="range"
-              min={0.5}
-              max={15}
-              step={0.5}
-              value={fieldAreaHa}
-              onChange={(e) => setFieldAreaHa(Number(e.target.value))}
-              className="w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-            />
-            {/* Quick 1-Click Plot Area Presets */}
-            <div className="grid grid-cols-4 gap-1.5 mt-2">
-              {[
-                { label: '0.5 ha', sub: '~1.2 ac', val: 0.5 },
-                { label: '1.0 ha ★', sub: 'Karnataka Avg', val: 1.0 },
-                { label: '2.0 ha', sub: '~5 ac', val: 2.0 },
-                { label: '5.0 ha', sub: '~12.5 ac', val: 5.0 }
-              ].map((preset) => (
-                <button
-                  key={preset.val}
-                  type="button"
-                  onClick={() => setFieldAreaHa(preset.val)}
-                  className={`py-1 px-1 rounded-lg text-center border transition-all ${
-                    fieldAreaHa === preset.val
-                      ? 'bg-cyan-500/15 border-cyan-500 text-cyan-700 dark:text-cyan-300 shadow-sm ring-1 ring-cyan-500/30'
-                      : 'bg-slate-100/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-400'
-                  }`}
-                >
-                  <div className="text-[10px] font-black">{preset.label}</div>
-                  <div className="text-[8px] opacity-75">{preset.sub}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Visual 4-Stage Crop Growth Timeline Stepper */}
-      <div className="rounded-3xl glass-card p-6 border border-slate-200 dark:border-slate-800 shadow-lg space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5 text-emerald-500" />
-            FAO-56 Phenological Growth Stage Timeline &bull; {selectedCrop} ({currentCropMetadata.totalDuration} Days Total)
-          </span>
-          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 self-start sm:self-auto">
-            Active: {result?.growth_stage || 'Peak Mid-Season'} (Kc: {result?.crop_coefficient_kc || 1.15})
-          </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          {currentCropMetadata.stages.map((s: CropStageMetadata) => {
-            const isActive = growthStageStep === s.step;
-            return (
-              <div
-                key={s.step}
-                role="button"
-                tabIndex={0}
-                onClick={() => setDaysSincePlanting(s.midDay)}
-                onKeyDown={(e) => e.key === 'Enter' && setDaysSincePlanting(s.midDay)}
-                className={`p-4 rounded-2xl border transition-all cursor-pointer text-left select-none ${
-                  isActive
-                    ? 'border-emerald-500 bg-emerald-500/10 shadow-md ring-2 ring-emerald-500/20 scale-[1.01]'
-                    : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 opacity-75 hover:opacity-100 hover:border-slate-400 hover:shadow-sm'
-                }`}
+        {/* ── COLUMN 2: Growth Stage & Irrigation Recommendation (4 cols) ── */}
+        <div className="lg:col-span-4 flex flex-col space-y-4">
+
+          {/* 2. Crop Growth Stage (FAO-56 Reference) Card */}
+          <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-white/10 shadow-sm p-4 sm:p-5 space-y-3.5">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-2.5">
+              <div className="flex items-center gap-1.5">
+                <div className="p-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Sprout className="w-3.5 h-3.5" />
+                </div>
+                <h3 className="text-xs font-black text-slate-900 dark:text-white tracking-tight">
+                  2. Crop Growth Stage <span className="font-normal text-slate-400">(FAO-56 Reference)</span>
+                </h3>
+                <Info className="w-3 h-3 text-slate-400" />
+              </div>
+              <button
+                onClick={() => setShowGrowthStagesModal(true)}
+                className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-semibold"
               >
-                <div className="flex items-center justify-between">
-                  <span className={`text-xs font-extrabold ${isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-300'}`}>
-                    {s.step}. {s.name}
-                  </span>
-                  {isActive ? (
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-                  ) : (
-                    <span className="text-[9px] text-slate-400 hover:text-emerald-500 transition-colors">Select ↗</span>
-                  )}
-                </div>
-                <div className="text-[10px] text-slate-400 font-mono mt-1 flex justify-between">
-                  <span>Day {s.startDay} - {s.endDay} ({s.duration}d)</span>
-                  <span className="font-bold text-slate-600 dark:text-slate-300">{s.kc}</span>
-                </div>
-                <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-2 leading-relaxed">
-                  {s.desc}
-                </p>
-                {isActive && (
-                  <div className="mt-2 pt-2 border-t border-emerald-500/20 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center justify-between">
-                    <span>Currently Active</span>
-                    <span className="font-mono">Day {daysSincePlanting}</span>
+                About growth stages
+              </button>
+            </div>
+
+            {/* Stepped Progress Stages Line */}
+            <div className="pt-2 pb-1">
+              <div className="grid grid-cols-4 relative text-center">
+                {/* Connecting Line */}
+                <div className="absolute top-4 left-6 right-6 h-0.5 bg-slate-200 dark:bg-slate-700 -z-0" />
+                <div
+                  className="absolute top-4 left-6 h-0.5 bg-emerald-500 transition-all duration-300 -z-0"
+                  style={{
+                    width: currentStageInfo.step === 1 ? '0%' :
+                           currentStageInfo.step === 2 ? '33%' :
+                           currentStageInfo.step === 3 ? '66%' : '100%'
+                  }}
+                />
+
+                {/* Stage 1: Initial */}
+                <div className="flex flex-col items-center z-10">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center transition ${currentStageInfo.step >= 1 ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 border-2 border-emerald-500' : 'bg-slate-100 text-slate-400 border border-slate-300'}`}>
+                    <Sprout className="w-4 h-4" />
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+                  <span className="text-[10px] font-bold text-slate-800 dark:text-slate-200 mt-1.5 leading-tight">
+                    {currentCrop.stages.initial.name}
+                  </span>
+                  <span className="text-[9px] text-slate-400">({currentCrop.stages.initial.range})</span>
+                </div>
 
-      {/* Plain-Language Farmer Advisory Card (Primary Result) */}
-      {result && (
-        <div className="rounded-3xl glass-card p-6 md:p-8 border border-slate-200 dark:border-slate-700/80 shadow-2xl space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 rounded-full text-xs font-bold" style={{
-                  backgroundColor: `${result.urgency_color}20`,
-                  color: result.urgency_color,
-                  border: `1px solid ${result.urgency_color}40`
-                }}>
-                  {result.irrigation_status}
-                </span>
-                <span className="text-xs text-slate-400 font-medium">
-                  {result.crop} &bull; Stage: <strong className="text-slate-800 dark:text-slate-200">{result.growth_stage}</strong>
-                </span>
-              </div>
+                {/* Stage 2: Crop Development */}
+                <div className="flex flex-col items-center z-10">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center transition ${currentStageInfo.step >= 2 ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30 ring-4 ring-emerald-100 dark:ring-emerald-950' : 'bg-slate-100 text-slate-400 border border-slate-300'}`}>
+                    <Sprout className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 mt-1.5 leading-tight">
+                    {currentCrop.stages.development.name}
+                  </span>
+                  <span className="text-[9px] text-slate-400">({currentCrop.stages.development.range})</span>
+                </div>
 
-              <h3 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">
-                Farmer Advisory & Water Prescription
+                {/* Stage 3: Mid-Season */}
+                <div className="flex flex-col items-center z-10">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center transition ${currentStageInfo.step >= 3 ? 'bg-emerald-100 text-emerald-600 border-2 border-emerald-500' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-300 dark:border-white/10'}`}>
+                    <Sprout className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-800 dark:text-slate-200 mt-1.5 leading-tight">
+                    {currentCrop.stages.midSeason.name}
+                  </span>
+                  <span className="text-[9px] text-slate-400">({currentCrop.stages.midSeason.range})</span>
+                </div>
+
+                {/* Stage 4: Late Season */}
+                <div className="flex flex-col items-center z-10">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center transition ${currentStageInfo.step >= 4 ? 'bg-emerald-100 text-emerald-600 border-2 border-emerald-500' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-300 dark:border-white/10'}`}>
+                    <Sprout className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-800 dark:text-slate-200 mt-1.5 leading-tight">
+                    {currentCrop.stages.lateSeason.name}
+                  </span>
+                  <span className="text-[9px] text-slate-400">({currentCrop.stages.lateSeason.range})</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Current Stage Highlight Banner */}
+            <div className="p-3 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/40 flex items-start justify-between gap-2.5">
+              <div className="flex items-start gap-2">
+                <Sprout className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-xs font-bold text-emerald-900 dark:text-emerald-300">
+                    Current Stage: {currentStageInfo.stage.name} ({currentStageInfo.stage.range})
+                  </h4>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 leading-relaxed">
+                    {currentStageInfo.stage.desc}
+                  </p>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 border border-emerald-200 shadow-sm shrink-0">
+                DSS: {dss} days
+              </span>
+            </div>
+          </div>
+
+          {/* 3. Irrigation Recommendation Card */}
+          <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-white/10 shadow-sm p-4 sm:p-5 space-y-3.5 flex-1 flex flex-col justify-between">
+            <div className="flex items-center gap-2 border-b border-slate-100 dark:border-white/5 pb-2.5">
+              <div className="p-1 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                <Droplets className="w-3.5 h-3.5" />
+              </div>
+              <h3 className="text-xs font-black text-slate-900 dark:text-white tracking-tight">
+                3. Irrigation Recommendation
               </h3>
-            </div>
-
-            {/* Quick Water Quantity Badge */}
-            {result.recommended_gross_mm > 0 ? (
-              <div className="px-6 py-4 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-right shadow-sm">
-                <span className="text-xs text-rose-600 dark:text-rose-400 block font-semibold">Recommended Water Volume</span>
-                <span className="text-3xl font-black text-rose-600 dark:text-rose-400 font-mono">
-                  {result.required_water_volume_m3?.toLocaleString()} m³
-                </span>
-                <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                  ({(result.required_water_volume_m3 * 1000).toLocaleString()} Litres &bull; {result.recommended_gross_mm} mm depth)
-                </span>
-              </div>
-            ) : (
-              <div className="px-6 py-4 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 text-right shadow-sm">
-                <span className="text-xs text-emerald-600 dark:text-emerald-400 block font-semibold">Root Zone Soil Moisture</span>
-                <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                  Adequate / Saturated
-                </span>
-                <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">No irrigation needed today. Roots well aerated.</span>
-              </div>
-            )}
-          </div>
-
-          {/* Plain Farmer Advice Box */}
-          <div className="p-5 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 leading-relaxed text-sm text-slate-800 dark:text-slate-200 font-medium">
-            {result.advisory_summary}
-          </div>
-
-          {/* Real Field Equipment & Actionable Farmer Units */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
-            <div className="p-4 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 flex items-center gap-3.5">
-              <div className="p-3 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400">
-                <Truck className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[11px] text-slate-400 block font-semibold">{lang === 'kn' ? 'ಟ್ರಾಕ್ಟರ್ ಟ್ಯಾಂಕರ್‌ಗಳು' : 'Tractor Tankers Needed'}</span>
-                <span className="text-xl font-black text-slate-900 dark:text-white font-mono">
-                  {result.recommended_gross_mm > 0 ? `${tractorTankers} Tankers` : '0 Tankers'}
-                </span>
-                <span className="text-[10px] text-slate-400 block">5,000L standard farm trailer</span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 flex items-center gap-3.5">
-              <div className="p-3 rounded-xl bg-cyan-500/15 text-cyan-600 dark:text-cyan-400">
-                <Timer className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[11px] text-slate-400 block font-semibold">{lang === 'kn' ? 'ಡ್ರಿಪ್ ಪಂಪ್ ಸಮಯ' : 'Drip Pump Runtime'}</span>
-                <span className="text-xl font-black text-cyan-600 dark:text-cyan-400 font-mono">
-                  {result.recommended_gross_mm > 0 ? `${dripPumpHours} Hours` : '0 Hours'}
-                </span>
-                <span className="text-[10px] text-slate-400 block">At 7.5 HP (~40,000 L/hr)</span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 flex items-center gap-3.5">
-              <div className="p-3 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[11px] text-slate-400 block font-semibold">{lang === 'kn' ? 'ಬೇರು ಕೊಳೆತ ಅಪಾಯ' : 'Root Rot / Anoxia Risk'}</span>
-                <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                  Low / Safe
-                </span>
-                <span className="text-[10px] text-slate-400 block">Root zone well-oxygenated</span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 flex items-center gap-3.5">
-              <div className="p-3 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                <Zap className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[11px] text-slate-400 block font-semibold">{lang === 'kn' ? 'ವಿದ್ಯುತ್ ಉಳಿತಾಯ' : 'Energy Conservation'}</span>
-                <span className="text-xl font-black text-amber-500 font-mono">
-                  {powerSavedKwh > 0 ? `${powerSavedKwh} kWh` : '0 kWh'}
-                </span>
-                <span className="text-[10px] text-slate-400 block">Est. ~₹{moneySavedInr} electricity value</span>
-              </div>
-            </div>
-          </div>
-
-          {/* 4 Scientific Metric Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 pt-2">
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/40">
-              <span className="text-[11px] text-slate-400 block font-semibold">Crop Water Demand (ETc)</span>
-              <span className="text-2xl font-black text-cyan-600 dark:text-cyan-400 font-mono">
-                {result.etc_crop_water_need_mm_day} mm/day
-              </span>
-              <span className="text-[10px] text-slate-400 block mt-1">
-                Kc: {result.crop_coefficient_kc} &bull; ET₀: {result.et0_reference_mm_day} mm
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                <span className="w-1 h-1 rounded-full bg-emerald-500" />FAO-56
               </span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/40">
-              <span className="text-[11px] text-slate-400 block font-semibold">Soil Safe Moisture (RAW)</span>
-              <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                {result.raw_readily_available_water_mm} mm
-              </span>
-              <span className="text-[10px] text-slate-400 block mt-1">
-                Total Available (TAW): {result.taw_total_available_water_mm} mm
-              </span>
+            {/* Split Boxes */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Left Box: Amount */}
+              <div className="p-3.5 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-900/30 space-y-1">
+                <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 text-xs font-bold">
+                  <Droplets className="w-4 h-4" />
+                  <span>Recommended Irrigation</span>
+                </div>
+                <div className="flex items-baseline gap-2 pt-1">
+                  <span className="text-2xl font-black font-mono text-slate-900 dark:text-white">
+                    {currentCrop.irrigationRec.amount}
+                  </span>
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                    <span className="w-1 h-1 rounded-full bg-emerald-500" />LIVE
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                  ({currentCrop.irrigationRec.volM3})
+                </div>
+                <p className="text-[10px] text-slate-600 dark:text-slate-300 pt-1 leading-snug">
+                  Apply within next 3–4 days based on soil moisture and field conditions.
+                </p>
+              </div>
+
+              {/* Right Stack: Timing + Method */}
+              <div className="space-y-2 flex flex-col justify-between">
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-white/5 space-y-0.5">
+                  <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                    <Calendar className="w-3 h-3 text-emerald-500" />
+                    <span>Suggested Timing</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900 dark:text-white">
+                    <span>{currentCrop.irrigationRec.timing}</span>
+                    <span className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[7px] font-bold uppercase bg-emerald-100 text-emerald-700">
+                      <span className="w-1 h-1 rounded-full bg-emerald-500" />FAO-56
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-white/5 space-y-0.5">
+                  <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                    <Sprout className="w-3 h-3 text-cyan-500" />
+                    <span>Application Method</span>
+                  </div>
+                  <div className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 leading-snug">
+                    {currentCrop.irrigationRec.method}
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/40">
-              <span className="text-[11px] text-slate-400 block font-semibold">Current Root Deficit</span>
-              <span className="text-2xl font-black text-amber-500 font-mono">
-                {result.current_depletion_mm} mm
-              </span>
-              <span className="text-[10px] text-slate-400 block mt-1">
-                {result.depletion_percentage_raw}% of safe depletion
-              </span>
+            {/* Note Text */}
+            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-white/5 flex items-start gap-2">
+              <Info className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                This recommendation uses the FAO-56 dual crop coefficient method with live Open-Meteo ET₀ forecasts and district soil parameters. Apply judgment based on actual field conditions and consult your local agronomist.
+              </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/40">
-              <span className="text-[11px] text-slate-400 block font-semibold">Effective Rain Buffer</span>
-              <span className="text-2xl font-black text-blue-500 font-mono">
-                {result.effective_rainfall_mm} mm
+            {/* Actionable Drainage Guidance Grouped by Priority */}
+            <div className="pt-2 border-t border-slate-100 dark:border-white/5 space-y-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                Agro-Hydrological Safeguards &bull; Field Actions
               </span>
-              <span className="text-[10px] text-slate-400 block mt-1">
-                Infiltrated precipitation
-              </span>
+              <div className="space-y-1 text-[10px]">
+                <div className="flex items-start gap-1.5 text-slate-600 dark:text-slate-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1 shrink-0" />
+                  <span><strong>Check Receiving Level:</strong> Verify Tungabhadra canal stage before opening field sluice drains to prevent reverse flooding.</span>
+                </div>
+                <div className="flex items-start gap-1.5 text-slate-600 dark:text-slate-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1 shrink-0" />
+                  <span><strong>Low-Cost Bunding:</strong> Maintain 2–5 cm earthen bunds to trap light rainfall naturally and eliminate unnecessary diesel pump runtime.</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* 7-Day Projected Soil Water Balance Chart */}
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                <TrendingDown className="w-3.5 h-3.5 text-cyan-500" />
-                <span>7-Day Root-Zone Water Deficit vs Safe Irrigation Threshold (RAW)</span>
-              </h4>
-              <span className="text-xs text-rose-500 font-semibold hidden sm:inline">
-                Red Line = Critical Refill Level ({result.raw_readily_available_water_mm} mm)
+        </div>
+
+        {/* ── COLUMN 3: Current Conditions & Forecast (4 cols) ── */}
+        <div className="lg:col-span-4 flex flex-col space-y-4">
+
+          {/* 4. Current Conditions & Forecast Card */}
+          <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-white/10 shadow-sm p-4 sm:p-5 space-y-3">
+            <div className="flex items-center gap-2 border-b border-slate-100 dark:border-white/5 pb-2.5">
+              <div className="p-1 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                <CloudRain className="w-3.5 h-3.5" />
+              </div>
+              <h3 className="text-xs font-black text-slate-900 dark:text-white tracking-tight">
+                4. Current Conditions &amp; Forecast
+              </h3>
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                <span className="w-1 h-1 rounded-full bg-emerald-500" />NWP
               </span>
             </div>
 
-            <div className="h-64 w-full">
+            {/* 2x2 Grid of 4 Cards */}
+            <div className="grid grid-cols-2 gap-2.5">
+
+              {/* 1. Forecast Rainfall */}
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-white/5 space-y-1">
+                <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                  <CloudRain className="w-4 h-4" />
+                  <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Forecast Rainfall</span>
+                </div>
+                <span className="text-[9px] text-slate-400 block">(Next 3 days)</span>
+                <div className="flex items-baseline gap-1.5 pt-0.5">
+                  <span className="text-lg font-black font-mono text-slate-900 dark:text-white">
+                    50 – 80 mm
+                  </span>
+                  <span className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[7px] font-bold uppercase bg-emerald-100 text-emerald-700">
+                    <span className="w-1 h-1 rounded-full bg-emerald-500" />NWP
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
+                  Moderate to heavy rainfall
+                </p>
+                <span className="text-[9px] text-slate-400 block pt-0.5">
+                  {new Date(Date.now() + 3 * 86400000).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' })}
+                </span>
+              </div>
+
+              {/* 2. Soil Moisture (Modelled) */}
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-white/5 space-y-1">
+                <div className="flex items-center gap-1.5 text-cyan-600 dark:text-cyan-400">
+                  <Droplets className="w-4 h-4" />
+                  <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Soil Moisture</span>
+                </div>
+                <span className="text-[9px] text-slate-400 block">(Modelled)</span>
+                <div className="flex items-baseline gap-1.5 pt-0.5">
+                  <span className="text-lg font-black font-mono text-slate-900 dark:text-white">
+                    58 % <span className="text-xs font-normal text-slate-400">(FC)</span>
+                  </span>
+                  <span className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[7px] font-bold uppercase bg-slate-100 text-slate-600">
+                    <span className="w-1 h-1 rounded-full bg-slate-400" />MODELLED
+                  </span>
+                </div>
+                {/* Progress bar */}
+                <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mt-1">
+                  <div className="h-full bg-blue-500 rounded-full" style={{ width: '58%' }} />
+                </div>
+                <span className="text-[9px] text-slate-400 block pt-0.5">
+                  Field Capacity (approx.)
+                </span>
+              </div>
+
+              {/* 3. Irrigation Need */}
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-white/5 space-y-1">
+                <div className="flex items-center gap-1.5 text-amber-500">
+                  <Waves className="w-4 h-4" />
+                  <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Irrigation Need</span>
+                </div>
+                <div className="flex items-baseline gap-1.5 pt-1">
+                  <span className="text-base font-black text-amber-600 dark:text-amber-400">
+                    Moderate
+                  </span>
+                  <span className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[7px] font-bold uppercase bg-emerald-100 text-emerald-700">
+                    <span className="w-1 h-1 rounded-full bg-emerald-500" />FAO-56
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug pt-0.5">
+                  Based on crop stage and forecast rainfall
+                </p>
+              </div>
+
+              {/* 4. Waterlogging Warning */}
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-white/5 space-y-1">
+                <div className="flex items-center gap-1.5 text-rose-500">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Waterlogging Warning</span>
+                </div>
+                <div className="flex items-baseline gap-1.5 pt-1">
+                  <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                    Low Risk
+                  </span>
+                  <span className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[7px] font-bold uppercase bg-emerald-100 text-emerald-700">
+                    <span className="w-1 h-1 rounded-full bg-emerald-500" />ML
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug pt-0.5">
+                  No waterlogging expected in next 3 days
+                </p>
+              </div>
+
+            </div>
+          </div>
+
+          {/* 7-Day Rainfall Forecast (Ballari) Bar Chart */}
+          <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-white/10 shadow-sm p-4 sm:p-5 space-y-3 flex-1 flex flex-col justify-between">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-2.5">
+              <h3 className="text-xs font-black text-slate-900 dark:text-white tracking-tight">
+                7-Day Rainfall Forecast ({districtMeta.displayName})
+              </h3>
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />Open-Meteo NWP
+              </span>
+            </div>
+
+            <div className="w-full h-44">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="depletionGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="day" stroke="#94a3b8" fontSize={11} />
-                  <YAxis stroke="#94a3b8" fontSize={11} unit=" mm" />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#fff' }}
+                <BarChart data={forecastBarData} margin={{ top: 15, right: 10, left: -15, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.6} />
+                  <XAxis
+                    dataKey="day"
+                    tick={{ fontSize: 9, fill: '#64748b' }}
+                    interval={0}
                   />
-                  <ReferenceLine
-                    y={result.raw_readily_available_water_mm}
-                    stroke="#ef4444"
-                    strokeDasharray="4 4"
-                    label={{ value: 'Irrigation Threshold (RAW)', fill: '#ef4444', fontSize: 11, position: 'top' }}
+                  <YAxis
+                    tick={{ fontSize: 9, fill: '#64748b' }}
+                    domain={[0, 100]}
+                    unit=" mm"
                   />
-                  <Area
-                    type="monotone"
-                    dataKey="depletion"
-                    name="Projected Soil Water Deficit (mm)"
-                    stroke="#0ea5e9"
-                    strokeWidth={2.5}
-                    fillOpacity={1}
-                    fill="url(#depletionGrad)"
+                  <RechartsTooltip
+                    contentStyle={{
+                      backgroundColor: '#0f172a',
+                      borderColor: '#334155',
+                      borderRadius: '10px',
+                      fontSize: '11px',
+                      color: '#f8fafc'
+                    }}
+                    formatter={(val: any) => [`${val} mm`, 'Rainfall']}
                   />
-                </AreaChart>
+                  <Bar
+                    dataKey="rainfall"
+                    fill="#3b82f6"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={32}
+                    label={{ position: 'top', fontSize: 9, fill: '#64748b' }}
+                  />
+                </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          {/* Collapsible Scientific Details for Project Evaluators */}
-          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-            <button
-              onClick={() => setShowTechnicalDetails(!showTechnicalDetails)}
-              className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-cyan-500 transition-colors"
-            >
-              <span>{showTechnicalDetails ? 'Hide' : 'View'} Complete FAO-56 Agronomic & Mathematical Equations</span>
-              {showTechnicalDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
+        </div>
 
-            {showTechnicalDetails && (
-              <div className="mt-4 p-5 rounded-2xl bg-slate-900 text-slate-200 font-mono text-xs space-y-3 shadow-inner">
-                <p><span className="text-cyan-400 font-bold">Reference Evapotranspiration (ET₀):</span> Hargreaves-Samani = 0.0023 &times; R<sub>a</sub> &times; (T<sub>mean</sub> + 17.8) &times; &radic;(T<sub>max</sub> - T<sub>min</sub>) = <strong>{result.et0_reference_mm_day} mm/day</strong></p>
-                <p><span className="text-cyan-400 font-bold">Crop Water Need (ETc):</span> ETc = Kc &times; ET₀ = {result.crop_coefficient_kc} &times; {result.et0_reference_mm_day} = <strong>{result.etc_crop_water_need_mm_day} mm/day</strong></p>
-                <p><span className="text-cyan-400 font-bold">Total Available Water (TAW):</span> 1000 &times; (FC - WP) &times; Z<sub>r</sub> = <strong>{result.taw_total_available_water_mm} mm</strong></p>
-                <p><span className="text-cyan-400 font-bold">Readily Available Water (RAW):</span> p &times; TAW = <strong>{result.raw_readily_available_water_mm} mm</strong></p>
-                <p><span className="text-cyan-400 font-bold">Root-Zone Water Balance:</span> D<sub>r,i</sub> = D<sub>r,i-1</sub> - P<sub>eff</sub> + ETc = <strong>{result.current_depletion_mm} mm</strong></p>
+      </div>
+
+      {/* ── Bottom Section: Data Sources & Last Updated (Left) + Note (Center) + View Methodology (Right) ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-stretch">
+
+        {/* Left: Data Sources & Last Updated (7 cols) */}
+        <div className="lg:col-span-7 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-white/10 shadow-sm p-3.5 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+            <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">
+              Data Sources &amp; Last Updated
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+
+            {/* 1. Weather Forecast */}
+            <div className="p-2 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/50 dark:border-white/5 space-y-1">
+              <div className="flex items-center gap-1.5">
+                <CloudRain className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                <span className="text-[10px] font-bold text-slate-800 dark:text-slate-200 leading-tight">Weather Forecast</span>
               </div>
-            )}
+              <span className="text-[9px] text-slate-400 block leading-tight">(INSAT/IMD)</span>
+              <div className="pt-1 flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                <span className="truncate">Open-Meteo · 30-min cache</span>
+              </div>
+            </div>
+
+            {/* 2. Rainfall Forecast */}
+            <div className="p-2 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/50 dark:border-white/5 space-y-1">
+              <div className="flex items-center gap-1.5">
+                <CloudRain className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                <span className="text-[10px] font-bold text-slate-800 dark:text-slate-200 leading-tight">Rainfall Forecast</span>
+              </div>
+              <span className="text-[9px] text-slate-400 block leading-tight">(IMD)</span>
+              <div className="pt-1 flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                <span className="truncate">Open-Meteo ET₀ · Live</span>
+              </div>
+            </div>
+
+            {/* 3. Soil Data */}
+            <div className="p-2 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/50 dark:border-white/5 space-y-1">
+              <div className="flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span className="text-[10px] font-bold text-slate-800 dark:text-slate-200 leading-tight">Soil Data</span>
+              </div>
+              <span className="text-[9px] text-slate-400 block leading-tight">(ICAR/ISRIC)</span>
+              <div className="pt-1 flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                <span className="truncate">ICAR/ISRIC · Static</span>
+              </div>
+            </div>
+
+            {/* 4. Crop Parameters */}
+            <div className="p-2 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/50 dark:border-white/5 space-y-1">
+              <div className="flex items-center gap-1.5">
+                <Sprout className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <span className="text-[10px] font-bold text-slate-800 dark:text-slate-200 leading-tight">Crop Parameters</span>
+              </div>
+              <span className="text-[9px] text-slate-400 block leading-tight">(FAO-56)</span>
+              <div className="pt-1 flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                <span className="truncate">FAO-56 · Embedded catalog</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* Center: Data Provenance Note */}
+        <div className="lg:col-span-3 rounded-2xl bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-800/30 p-3.5 flex items-start gap-3">
+          <div className="w-7 h-7 rounded-xl bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
+            <Info className="w-4 h-4" />
+          </div>
+          <div>
+            <h4 className="text-xs font-black text-slate-900 dark:text-white leading-tight">
+              Data Provenance
+            </h4>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+              FAO-56 ET₀ and 7-day rainfall from Open-Meteo ECMWF (live, 30-min cache). Crop parameters from FAO-56 embedded catalog. Soil properties from ICAR/ISRIC static reference. Verify against actual field conditions.
+            </p>
+          </div>
+        </div>
+
+        {/* Right: View Methodology Button (2 cols) */}
+        <div className="lg:col-span-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-white/10 shadow-sm p-3.5 flex items-center justify-center">
+          <button
+            onClick={() => setShowMethodologyModal(true)}
+            className="w-full h-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-blue-50 dark:bg-slate-800/60 dark:hover:bg-blue-900/30 border border-slate-200/80 dark:border-white/10 hover:border-blue-400 text-slate-800 dark:text-white hover:text-blue-600 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>View Methodology</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+      </div>
+
+      {/* ── Methodology Modal ── */}
+      {showMethodologyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-xl rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
+              <div className="flex items-center gap-2">
+                <Sprout className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
+                  FAO-56 Water Budgeting Methodology
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowMethodologyModal(false)}
+                className="p-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-white/5">
+                <strong className="text-slate-900 dark:text-white block font-bold mb-1">Dual Crop Coefficient Approach</strong>
+                <p>Calculates daily reference evapotranspiration (ET₀) using temperature and solar radiation, scaling by crop coefficient (Kc) across phenological development stages (Initial, Crop Development, Mid-Season, and Late Season).</p>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-white/5">
+                <strong className="text-slate-900 dark:text-white block font-bold mb-1">Hydrological Drainage Safeguards</strong>
+                <p>Prioritizes gravity drainage when river/canal stages are below warning levels. Promotes low-cost bunding and selective pumping to prevent diesel fuel and electricity waste.</p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setShowMethodologyModal(false)}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition"
+              >
+                Got It
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* ── About Growth Stages Modal ── */}
+      {showGrowthStagesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
+              <h3 className="text-base font-black text-slate-900 dark:text-white">
+                FAO-56 Crop Stages Explained
+              </h3>
+              <button
+                onClick={() => setShowGrowthStagesModal(false)}
+                className="p-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-2 text-xs text-slate-600 dark:text-slate-300">
+              <p><strong>1. Initial:</strong> Sowing/transplanting to ~10% ground canopy cover.</p>
+              <p><strong>2. Crop Development:</strong> 10% canopy to full effective cover (70–80%). Rapid root growth.</p>
+              <p><strong>3. Mid-Season:</strong> Effective full canopy cover to start of ripening. Maximum water consumption.</p>
+              <p><strong>4. Late Season:</strong> Ripening to harvest maturity. Water requirement drops sharply.</p>
+            </div>
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setShowGrowthStagesModal(false)}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

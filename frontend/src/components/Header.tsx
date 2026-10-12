@@ -155,11 +155,12 @@ export const Header: React.FC<HeaderProps> = ({
           {onOpenModelModal && (
             <button
               onClick={onOpenModelModal}
-              className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 font-bold border border-purple-500/30 transition-all shadow-[0_0_12px_rgba(168,85,247,0.15)]"
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 font-bold border border-purple-500/30 transition-all shadow-[0_0_12px_rgba(168,85,247,0.15)]"
               title="View AI Model Architecture & XGBoost / ROC Metrics"
             >
-              <BrainCircuit className="w-3.5 h-3.5 text-purple-400" />
-              <span>AI Models &amp; XGBoost</span>
+              <BrainCircuit className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400 shrink-0" />
+              <span className="hidden md:inline text-[12px]">AI Models &amp; XGBoost</span>
+              <span className="md:hidden text-[11px]">AI Models</span>
             </button>
           )}
 

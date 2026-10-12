@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!--
+    JalaDrishti AI Sitemap
+    This is a single-page React application (SPA) using tab-based navigation.
+    All app tabs are presented from the root URL; this sitemap lists the canonical
+    root and the logical sections that are publicly accessible.
+    Update the <loc> URLs to your production domain when deployed.
+  -->
+
+  <!-- Root / Home — Flood Map tab (primary entry point) -->
+  <url>
+    <loc>http://localhost:3000/</loc>
+    <lastmod>2026-10-12</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <!-- Hash-anchor deep-links for major functional sections -->
+  <!-- Weather & Radar tab -->
+  <url>
+    <loc>http://localhost:3000/#weather</loc>
+    <lastmod>2026-10-12</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Crop Water & Irrigation Advisor tab -->
+  <url>
+    <loc>http://localhost:3000/#crop-water</loc>
+    <lastmod>2026-10-12</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Drainage Action Center tab -->
+  <url>
+    <loc>http://localhost:3000/#drainage</loc>
+    <lastmod>2026-10-12</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>

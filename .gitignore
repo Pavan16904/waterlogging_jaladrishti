@@ -90,3 +90,8 @@ desktop.ini
 *.swp
 *.swo
 *~
+
+# Quarantine & Temporary Backups
+.quarantine/
+*.bak
+*.timestamp-*
