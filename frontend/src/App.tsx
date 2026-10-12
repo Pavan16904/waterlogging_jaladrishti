@@ -14,6 +14,8 @@ import { CitizenLifelineModal } from './components/CitizenLifelineModal';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLanguage } from './context/LanguageContext';
 import { ProjectOverviewPage } from './components/ProjectOverviewPage';
+import { NotFoundPage } from './components/NotFoundPage';
+import { usePageMeta, useHashRouter, HASH_TO_TAB } from './hooks/usePageMeta';
 
 export function App() {
   const { t } = useLanguage();
@@ -39,9 +41,26 @@ export function App() {
   // Main 4-Page Navigation
   const [activeTab, setActiveTab] = useState<MainTabType>('map');
 
+  // ── SEO: per-tab page titles, meta descriptions, canonical-friendly URL hashes ──
+  // (criticalAlertCount is derived below after liveAlerts state is declared)
+  useHashRouter(activeTab, setActiveTab);
+
+  // ── 404 detection: unknown hash fragment renders NotFoundPage ──
+  const [isUnknownRoute, setIsUnknownRoute] = useState<boolean>(false);
+  useEffect(() => {
+    const checkHash = () => {
+      const hash = window.location.hash.replace('#', '').toLowerCase().trim();
+      const knownHashes = Object.keys(HASH_TO_TAB);
+      setIsUnknownRoute(!!hash && !knownHashes.includes(hash));
+    };
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
+  }, []);
+
   // Study Areas State
   const [studyAreas, setStudyAreas] = useState<StudyArea[]>([]);
-  const [selectedAreaId, setSelectedAreaId] = useState<string>('bengaluru_urban');
+  const [selectedAreaId, setSelectedAreaId] = useState<string>('ballari');
   const [currentArea, setCurrentArea] = useState<StudyArea | null>(null);
 
   // Analysis Parameters — always start with today as post-event, 7 days ago as pre-event
@@ -80,6 +99,15 @@ export function App() {
   const [isEmergencyOpsOpen, setIsEmergencyOpsOpen] = useState<boolean>(false);
   const [isCitizenLifelineOpen, setIsCitizenLifelineOpen] = useState<boolean>(false);
 
+  // ── Live page title: reflect critical alert count and active district in browser tab ──
+  const criticalAlertCount = liveAlerts.filter(
+    (a: any) => a.severity === 'critical' || a.level === 'critical' || a.status === 'critical'
+  ).length;
+  usePageMeta(activeTab, {
+    criticalAlerts: criticalAlertCount,
+    activeDistrict: currentArea?.name,
+  });
+
   // Initial Load: Fetch Study Areas, Radar metadata, IoT Telemetry & Alerts
   useEffect(() => {
     loadStudyAreas();
@@ -90,12 +118,12 @@ export function App() {
     setPostEventDate(getTodayStr());
     setPreEventDate(getPreEventStr());
 
-    // Set up continuous real-time telemetry polling interval (8s)
+    // Set up continuous real-time telemetry polling interval (30s — sufficient for IoT/alert data)
     const telemetryInterval = setInterval(() => {
       loadRealtimeTelemetry();
-      // Also refresh dates every 8s so they always reflect current day
+      // Also refresh dates every 30s so they always reflect current day
       setPostEventDate(getTodayStr());
-    }, 8000);
+    }, 30000);
 
     // Refresh radar frames every 5 minutes
     const radarInterval = setInterval(() => {
@@ -124,6 +152,11 @@ export function App() {
     if (selectedAreaId) {
       const area = studyAreas.find((a) => a.id === selectedAreaId) || null;
       setCurrentArea(area);
+      if (area) {
+        setSelectedDistrict(area.name.split('(')[0].trim());
+      }
+      // Clear previous district's zones so they do not bleed into the new district
+      setZones([]);
       loadLatestAnalysis(selectedAreaId);
       if (area) {
         // Fetch live rain, then immediately run analysis with it to update map
@@ -273,6 +306,19 @@ export function App() {
       setIsAnalyzing(false);
     }
   };
+
+  // Render custom 404 for unknown URL hashes
+  if (isUnknownRoute) {
+    return (
+      <NotFoundPage
+        onNavigateHome={() => {
+          setIsUnknownRoute(false);
+          setActiveTab('map');
+          window.history.replaceState(null, '', '/');
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg-primary)] bg-ambient-mesh text-slate-900 dark:text-slate-100 transition-colors duration-300">
