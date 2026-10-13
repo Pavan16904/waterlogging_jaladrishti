@@ -158,15 +158,16 @@ export function WeatherPage(_props: WeatherPageProps = {}) {
     try {
       const res = await api.getDistrictWeather(districtMeta.name, forceRefresh);
       const data = res?.data || res;
-      if (data && data.success) {
+      if (data && (data.success || data.today || data.forecast || data.sevenDayOutlook)) {
         setWeather(data as WeatherTelemetry);
-        setLastFetch(new Date());
+        setLastFetch(new Date(data.lastUpdated || Date.now()));
+        setError(null);
       } else {
-        setError(data?.message || 'Weather data unavailable for this district.');
+        setError(data?.message || 'Weather telemetry temporarily unavailable from Open-Meteo European NWP.');
         setWeather(null);
       }
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Failed to reach weather service.');
+      setError(err?.response?.data?.message || err?.message || 'Failed to reach Open-Meteo weather service.');
       setWeather(null);
     } finally {
       setLoading(false);
@@ -214,12 +215,8 @@ export function WeatherPage(_props: WeatherPageProps = {}) {
       });
     }
 
-    // Fallback shown only when API is offline — clearly labeled as sample data
-    return [
-      { dayLabel: 'Day 1 (Sample — API offline)', icon: 'rain', minTemp: 24, maxTemp: 31, condition: 'Sample data only', rainfallRange: '—', wind: '—', humidity: '—', isLive: false },
-      { dayLabel: 'Day 2 (Sample — API offline)', icon: 'partly-cloudy', minTemp: 25, maxTemp: 32, condition: 'Sample data only', rainfallRange: '—', wind: '—', humidity: '—', isLive: false },
-      { dayLabel: 'Day 3 (Sample — API offline)', icon: 'sun', minTemp: 25, maxTemp: 33, condition: 'Sample data only', rainfallRange: '—', wind: '—', humidity: '—', isLive: false },
-    ];
+    // Do NOT fabricate sample forecasts when offline or loading — return empty array
+    return [];
   }, [weather]);
 
   /* ── Chart Data: Real hourly precipitation from Open-Meteo ── */
@@ -267,7 +264,7 @@ export function WeatherPage(_props: WeatherPageProps = {}) {
     return [];
   }, [weather, timeFilter]);
 
-  const isLiveData = Boolean(weather?.success && !error);
+  const isLiveData = Boolean((weather?.success || weather?.today) && !error);
   const observedRainMm = weather?.today?.observedRainfallMm !== undefined
     ? weather.today.observedRainfallMm.toFixed(1)
     : '—';
@@ -360,7 +357,12 @@ export function WeatherPage(_props: WeatherPageProps = {}) {
           </div>
 
           {/* Live / Offline status pill */}
-          {isLiveData ? (
+          {loading ? (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300 border border-blue-300 dark:border-blue-500/30">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-spin" />
+              CONNECTING…
+            </span>
+          ) : isLiveData ? (
             <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               LIVE · Open-Meteo
@@ -734,68 +736,70 @@ export function WeatherPage(_props: WeatherPageProps = {}) {
 
           {/* 3 Columns Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            {threeDayForecast.map((col, idx) => (
-              <div
-                key={idx}
-                className="p-3 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/60 dark:border-white/5 flex flex-col items-center text-center space-y-2 hover:border-blue-300 dark:hover:border-blue-700 transition"
-              >
-                {/* Date Header */}
-                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate w-full">
-                  {col.dayLabel}
-                </span>
+            {threeDayForecast.length > 0 ? (
+              threeDayForecast.map((col, idx) => (
+                <div
+                  key={idx}
+                  className="p-3 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/60 dark:border-white/5 flex flex-col items-center text-center space-y-2 hover:border-blue-300 dark:hover:border-blue-700 transition"
+                >
+                  {/* Date Header */}
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate w-full">
+                    {col.dayLabel}
+                  </span>
 
-                {/* Weather Graphic */}
-                <div className="w-10 h-10 flex items-center justify-center my-0.5">
-                  {col.icon === 'rain' ? (
-                    <CloudRain className="w-8 h-8 text-blue-500" />
-                  ) : (
-                    <div className="relative">
-                      <Sun className="w-5 h-5 text-amber-500 absolute -top-1 -right-1" />
-                      <CloudRain className="w-7 h-7 text-blue-400" />
-                    </div>
-                  )}
-                </div>
+                  {/* Weather Graphic */}
+                  <div className="w-10 h-10 flex items-center justify-center my-0.5">
+                    {col.icon === 'rain' ? (
+                      <CloudRain className="w-8 h-8 text-blue-500" />
+                    ) : (
+                      <div className="relative">
+                        <Sun className="w-5 h-5 text-amber-500 absolute -top-1 -right-1" />
+                        <CloudRain className="w-7 h-7 text-blue-400" />
+                      </div>
+                    )}
+                  </div>
 
-                {/* Temperature */}
-                <div className="text-xs font-black tracking-tight">
-                  <span className="text-slate-800 dark:text-white">{col.minTemp}°</span>
-                  <span className="text-slate-400 font-normal"> / </span>
-                  <span className="text-rose-500 font-black">{col.maxTemp}°C</span>
-                </div>
+                  {/* Temperature */}
+                  <div className="text-xs font-black tracking-tight">
+                    <span className="text-slate-800 dark:text-white">{col.minTemp}°</span>
+                    <span className="text-slate-400 font-normal"> / </span>
+                    <span className="text-rose-500 font-black">{col.maxTemp}°C</span>
+                  </div>
 
-                {/* Condition Text */}
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug line-clamp-2 h-7 flex items-center justify-center">
-                  {col.condition}
-                </p>
+                  {/* Condition Text */}
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug line-clamp-2 h-7 flex items-center justify-center">
+                    {col.condition}
+                  </p>
 
-                {/* Live / sample indicator */}
-                {(col as any).isLive ? (
                   <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
-                    <span className="w-1 h-1 rounded-full bg-emerald-500" />NWP
+                    <span className="w-1 h-1 rounded-full bg-emerald-500" />NWP Forecast
                   </span>
-                ) : (
-                  <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700">
-                    OFFLINE
-                  </span>
-                )}
 
-                {/* Metrics */}
-                <div className="w-full pt-2 border-t border-slate-200/60 dark:border-white/5 space-y-1 text-[10px] text-slate-600 dark:text-slate-300">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <Droplets className="w-3 h-3 text-blue-500 shrink-0" />
-                    <span className="font-semibold">{col.rainfallRange}</span>
-                  </div>
-                  <div className="flex items-center justify-center gap-1.5">
-                    <Wind className="w-3 h-3 text-cyan-500 shrink-0" />
-                    <span>{col.wind}</span>
-                  </div>
-                  <div className="flex items-center justify-center gap-1.5">
-                    <Droplets className="w-3 h-3 text-indigo-500 shrink-0" />
-                    <span>{col.humidity}</span>
+                  {/* Metrics */}
+                  <div className="w-full pt-2 border-t border-slate-200/60 dark:border-white/5 space-y-1 text-[10px] text-slate-600 dark:text-slate-300">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <Droplets className="w-3 h-3 text-blue-500 shrink-0" />
+                      <span className="font-semibold">{col.rainfallRange}</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <Wind className="w-3 h-3 text-cyan-500 shrink-0" />
+                      <span>{col.wind}</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <Droplets className="w-3 h-3 text-indigo-500 shrink-0" />
+                      <span>{col.humidity}</span>
+                    </div>
                   </div>
                 </div>
+              ))
+            ) : (
+              <div className="col-span-3 p-6 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 space-y-2">
+                <AlertTriangle className="w-5 h-5 text-amber-500 mx-auto" />
+                <p className="font-semibold">Weather forecast data currently unavailable</p>
+                <p className="text-[11px] text-slate-400">Open-Meteo European NWP connection offline. No synthetic forecasts are substituted.</p>
+                <button onClick={() => fetchWeather(true)} className="px-3 py-1 bg-blue-600 text-white rounded-lg font-bold text-xs hover:bg-blue-700 transition">Retry Connection</button>
               </div>
-            ))}
+            )}
           </div>
 
           {/* Toggle for Extended 7-Day Outlook */}

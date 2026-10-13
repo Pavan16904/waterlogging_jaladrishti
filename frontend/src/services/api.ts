@@ -85,7 +85,18 @@ export const api = {
   // Open-Meteo Real Weather Observatory
   getDistrictWeather: async (district: string, refresh = false): Promise<any> => {
     const res = await axios.get(`${API_BASE}/weather/forecast/${encodeURIComponent(district)}${refresh ? '?refresh=true' : ''}`);
-    return res.data?.data || res.data;
+    const body = res.data;
+    if (body && body.data) {
+      return {
+        success: body.success ?? true,
+        isCached: body.isCached,
+        isStale: body.isStale,
+        lastUpdated: body.lastUpdated,
+        provider: body.provider,
+        ...body.data
+      };
+    }
+    return body;
   },
 
   getAllDistrictsWeather: async (refresh = false): Promise<any[]> => {

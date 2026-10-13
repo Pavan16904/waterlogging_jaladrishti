@@ -278,7 +278,14 @@ export async function getDistrictWeather(req: Request, res: Response) {
 
     return res.json({
       success: true,
-      data: cachedResult.data,
+      data: {
+        success: true,
+        ...cachedResult.data,
+        isCached: cachedResult.isCached,
+        isStale: cachedResult.isStale,
+        lastUpdated: cachedResult.lastUpdated,
+        provider: 'Open-Meteo European NWP / ECMWF'
+      },
       isCached: cachedResult.isCached,
       isStale: cachedResult.isStale,
       lastUpdated: cachedResult.lastUpdated,
