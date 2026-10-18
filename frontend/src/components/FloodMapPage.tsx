@@ -120,6 +120,7 @@ export type BasemapMode =
   | 'google_hybrid'
   | 'nasa_true_color'
   | 'nasa_false_color'
+  | 'nasa_opera_dswx'
   | 'street'
   | 'topographic';
 
@@ -238,6 +239,18 @@ export const BASEMAP_OPTIONS: BasemapOption[] = [
     swatchBg: '#132a13',
     swatchBorder: '#31572c',
     badgeColor: 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800',
+  },
+  {
+    id: 'nasa_opera_dswx',
+    name: 'NASA OPERA DSWx-S1 (Sentinel-1 SAR)',
+    description: 'NASA JPL OPERA 30m Dynamic Surface Water Extent derived from Copernicus Sentinel-1 C-SAR radar passes',
+    provider: 'NASA JPL / PO.DAAC / Copernicus Sentinel-1',
+    group: 'nasa',
+    license: 'NASA Open Access (Public)',
+    requiresApiKey: false,
+    swatchBg: '#081c24',
+    swatchBorder: '#00b4d8',
+    badgeColor: 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950 dark:text-cyan-300 dark:border-cyan-800',
   },
 
   // ── GROUP 3: FALLBACK OPEN BASEMAPS ──
@@ -375,6 +388,51 @@ export function FloodMapPage({
     return d.toISOString().split('T')[0];
   });
   const [nasaError, setNasaError] = useState<string | null>(null);
+
+  // Genuine NASA OPERA DSWx-S1 Sentinel-1 SAR Dynamic Surface Water Extent State
+  const [operaData, setOperaData] = useState<any>(null);
+  const [operaLoading, setOperaLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (basemapMode !== 'nasa_opera_dswx') return;
+    let mounted = true;
+    setOperaLoading(true);
+    api.getOperaFloodObservations(activeDistrict.id)
+      .then((res) => {
+        if (!mounted) return;
+        setOperaData(res);
+        const map = mapRef.current;
+        if (map && mapReadyRef.current && res?.observations) {
+          const operaSrc = map.getSource('src-opera-dswx') as any;
+          if (operaSrc && typeof operaSrc.setData === 'function') {
+            const features = res.observations
+              .filter((obs: any) => obs.geojson_footprint)
+              .map((obs: any) => ({
+                type: 'Feature',
+                properties: {
+                  title: obs.title,
+                  time_start: obs.time_start,
+                  platform: obs.platform,
+                  resolution: obs.resolution_meters
+                },
+                geometry: obs.geojson_footprint
+              }));
+            operaSrc.setData({
+              type: 'FeatureCollection',
+              features
+            });
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to query NASA OPERA DSWx satellite service:', err);
+      })
+      .finally(() => {
+        if (mounted) setOperaLoading(false);
+      });
+
+    return () => { mounted = false; };
+  }, [basemapMode, activeDistrict.id]);
 
   // Genuine Persisted Incidents State
   const [genuineIncidents, setGenuineIncidents] = useState<FloodIncident[]>([]);
@@ -696,6 +754,11 @@ export function FloodMapPage({
             type: 'geojson',
             data: { type: 'FeatureCollection', features: [] },
           },
+          // Genuine NASA OPERA DSWx-S1 Sentinel-1 SAR Surface Water Swath Footprints
+          'src-opera-dswx': {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          },
         },
         layers: [
           // Basemap Layers (mutually exclusive visibility) - Google Maps Satellite is default
@@ -706,6 +769,28 @@ export function FloodMapPage({
           { id: 'lyr-nasa-false-color', type: 'raster', source: 'src-nasa-false-color', layout: { visibility: 'none' } },
           { id: 'lyr-street', type: 'raster', source: 'src-street', layout: { visibility: 'none' } },
           { id: 'lyr-topographic', type: 'raster', source: 'src-topographic', layout: { visibility: 'none' } },
+          // NASA OPERA DSWx-S1 Sentinel-1 SAR Surface Water Swath Fill & Line
+          {
+            id: 'lyr-opera-dswx-fill',
+            type: 'fill',
+            source: 'src-opera-dswx',
+            layout: { visibility: 'none' },
+            paint: {
+              'fill-color': '#06b6d4',
+              'fill-opacity': 0.22,
+            },
+          },
+          {
+            id: 'lyr-opera-dswx-line',
+            type: 'line',
+            source: 'src-opera-dswx',
+            layout: { visibility: 'none' },
+            paint: {
+              'line-color': '#22d3ee',
+              'line-width': 2.5,
+              'line-dasharray': [3, 2],
+            },
+          },
 
           // Overlay: Real-Time Waterlogging Hydrological Heatmap Layer
           {
@@ -1118,6 +1203,10 @@ export function FloodMapPage({
         if (map.getLayer(lyrId)) map.setLayoutProperty(lyrId, 'visibility', 'none');
       });
 
+      // Hide OPERA DSWx layers by default unless selected
+      if (map.getLayer('lyr-opera-dswx-fill')) map.setLayoutProperty('lyr-opera-dswx-fill', 'visibility', 'none');
+      if (map.getLayer('lyr-opera-dswx-line')) map.setLayoutProperty('lyr-opera-dswx-line', 'visibility', 'none');
+
       // Activate only selected basemap (Default is Google Satellite)
       switch (basemapMode) {
         case 'google_satellite':
@@ -1134,6 +1223,11 @@ export function FloodMapPage({
           break;
         case 'nasa_false_color':
           if (map.getLayer('lyr-nasa-false-color')) map.setLayoutProperty('lyr-nasa-false-color', 'visibility', 'visible');
+          break;
+        case 'nasa_opera_dswx':
+          if (map.getLayer('lyr-google-satellite')) map.setLayoutProperty('lyr-google-satellite', 'visibility', 'visible');
+          if (map.getLayer('lyr-opera-dswx-fill')) map.setLayoutProperty('lyr-opera-dswx-fill', 'visibility', 'visible');
+          if (map.getLayer('lyr-opera-dswx-line')) map.setLayoutProperty('lyr-opera-dswx-line', 'visibility', 'visible');
           break;
         case 'street':
           if (map.getLayer('lyr-street')) map.setLayoutProperty('lyr-street', 'visibility', 'visible');
@@ -1517,39 +1611,69 @@ export function FloodMapPage({
             </div>
           </div>
 
-          {/* NASA GIBS Earth Observation Layer Banner & Date Selector */}
+          {/* NASA Earth Observation Layer Banner & Controls */}
           {isNasaLayerActive && (
-            <div className="absolute left-3 right-3 top-16 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-300 bg-sky-950/90 p-3 text-xs text-white shadow-xl backdrop-blur">
+            <div className="absolute left-3 right-3 top-16 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-300 bg-sky-950/95 p-3 text-xs text-white shadow-xl backdrop-blur">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/20 text-sky-300 border border-sky-400/30">
-                  <Satellite size={16} />
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 shrink-0">
+                  <Satellite size={18} />
                 </span>
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-extrabold text-white text-xs">{activeBasemapConfig.name}</span>
-                    <span className="rounded bg-sky-500/30 px-1.5 py-0.5 text-[9px] font-bold text-sky-200">
-                      NASA EOSDIS GIBS • EPSG:3857
+                    <span className="rounded bg-cyan-500/30 px-1.5 py-0.5 text-[9px] font-bold text-cyan-200">
+                      {basemapMode === 'nasa_opera_dswx' ? 'Copernicus Sentinel-1 SAR • NASA JPL OPERA (30m)' : 'NASA EOSDIS GIBS • EPSG:3857'}
                     </span>
                   </div>
-                  <p className="text-[10px] text-sky-200/80">
-                    MODIS Terra 250m global observation. Regional environmental overview; not fine-scale road waterlogging telemetry.
-                  </p>
+                  {basemapMode === 'nasa_opera_dswx' ? (
+                    operaLoading ? (
+                      <p className="text-[10px] text-cyan-200/80 animate-pulse">
+                        Querying NASA CMR Earthdata gateway for Copernicus Sentinel-1 orbital radar observations over {activeDistrict.displayName}...
+                      </p>
+                    ) : operaData?.status === 'OBSERVATION_AVAILABLE' && operaData?.latest_observation ? (
+                      <p className="text-[10px] text-cyan-100">
+                        Scene: <span className="font-mono text-cyan-300">{operaData.latest_observation.title.split('_').slice(0, 4).join('_')}</span> • Pass: {new Date(operaData.latest_observation.time_start).toLocaleString()} • Res: 30m • {operaData.latest_observation.revisit_schedule}. Regional surface-water estimate (not continuous CCTV).
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-amber-200 font-semibold">
+                        No usable satellite observation available for this district and date. (Sentinel-1 SAR orbit repeat cycle is ~6–12 days).
+                      </p>
+                    )
+                  ) : (
+                    <p className="text-[10px] text-sky-200/80">
+                      MODIS Terra 250m global observation. Regional environmental overview; not fine-scale road waterlogging telemetry.
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div className="flex items-center gap-2.5">
-                <div className="flex items-center gap-1.5 rounded-lg bg-white/10 px-2 py-1 border border-white/20">
-                  <Calendar size={13} className="text-sky-300" />
-                  <span className="text-[10px] font-bold text-sky-200">Date:</span>
-                  <input
-                    type="date"
-                    value={nasaDate}
-                    max={new Date().toISOString().split('T')[0]}
-                    min="2000-01-01"
-                    onChange={(e) => setNasaDate(e.target.value)}
-                    className="bg-transparent text-[11px] font-bold text-white outline-none cursor-pointer"
-                  />
-                </div>
+                {basemapMode !== 'nasa_opera_dswx' ? (
+                  <div className="flex items-center gap-1.5 rounded-lg bg-white/10 px-2 py-1 border border-white/20">
+                    <Calendar size={13} className="text-sky-300" />
+                    <span className="text-[10px] font-bold text-sky-200">Date:</span>
+                    <input
+                      type="date"
+                      value={nasaDate}
+                      max={new Date().toISOString().split('T')[0]}
+                      min="2000-01-01"
+                      onChange={(e) => setNasaDate(e.target.value)}
+                      className="bg-transparent text-[11px] font-bold text-white outline-none cursor-pointer"
+                    />
+                  </div>
+                ) : (
+                  operaData?.latest_observation?.water_layer_http && (
+                    <a
+                      href={operaData.latest_observation.water_layer_http}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-lg bg-cyan-700/60 hover:bg-cyan-600 px-2.5 py-1 text-[10px] font-bold text-cyan-100 border border-cyan-400/40 transition"
+                      title="Direct NASA Earthdata GeoTIFF Product"
+                    >
+                      Download GeoTIFF (WTR)
+                    </a>
+                  )
+                )}
 
                 <button
                   type="button"
@@ -1858,7 +1982,7 @@ export function FloodMapPage({
                                 className="h-7 w-7 shrink-0 rounded-lg border shadow-xs flex items-center justify-center text-xs"
                                 style={{ backgroundColor: opt.swatchBg, borderColor: opt.swatchBorder }}
                               >
-                                {opt.id === 'nasa_true_color' ? '🌍' : '🧪'}
+                                {opt.id === 'nasa_true_color' ? '🌍' : opt.id === 'nasa_opera_dswx' ? '🌊' : '🧪'}
                               </div>
                               <div className="min-w-0">
                                 <p className="text-xs font-bold text-slate-900 dark:text-white truncate">

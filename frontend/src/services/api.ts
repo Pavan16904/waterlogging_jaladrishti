@@ -253,5 +253,12 @@ export const api = {
   updateIncidentStatus: async (id: string, status: string): Promise<any> => {
     const res = await axios.patch(`${API_BASE}/incidents/${encodeURIComponent(id)}/status`, { status });
     return res.data;
+  },
+
+  // Genuine Satellite-Derived Surface Water Extent (NASA OPERA DSWx-S1 Sentinel-1 SAR)
+  getOperaFloodObservations: async (districtId?: string): Promise<any> => {
+    const q = districtId ? `?district_id=${encodeURIComponent(districtId)}` : '';
+    const res = await axios.get(`${API_BASE}/satellite/opera-dswx${q}`);
+    return res.data;
   }
 };

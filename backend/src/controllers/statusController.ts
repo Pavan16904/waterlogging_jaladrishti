@@ -3,6 +3,7 @@ import { openMeteoIngestionService } from '../services/openMeteoIngestionService
 import { observedRainfallService } from '../services/adapters/observedRainfallService.js';
 import { riverLevelSource } from '../services/adapters/riverLevelSource.js';
 import { sentinelFloodService } from '../services/adapters/sentinelFloodService.js';
+import { nasaOperaFloodService } from '../services/adapters/nasaOperaFloodService.js';
 import { mqttSensorService } from '../services/adapters/mqttSensorService.js';
 import { redisService } from '../services/redisService.js';
 import { activeDriver } from '../db/index.js';
@@ -16,6 +17,7 @@ export async function getDataPipelineStatus(req: Request, res: Response) {
       imdStatus,
       riverStatus,
       mqttStatus,
+      sentinelStatus
     ] = await Promise.all([
       openMeteoIngestionService.getStatus(),
       observedRainfallService.getGpmStatus(),
@@ -23,9 +25,10 @@ export async function getDataPipelineStatus(req: Request, res: Response) {
       observedRainfallService.getImdStatus(),
       riverLevelSource.getStatus(),
       mqttSensorService.getStatus(),
+      sentinelFloodService.getStatus()
     ]);
 
-    const sources = [openMeteoStatus, gpmStatus, ksndmcStatus, imdStatus, riverStatus, mqttStatus].map((source) => ({
+    const sources = [openMeteoStatus, gpmStatus, ksndmcStatus, imdStatus, riverStatus, mqttStatus, sentinelStatus].map((source) => ({
       ...source,
       status: source.status === 'unconfigured' ? 'not connected' : source.status,
     }));
@@ -53,6 +56,19 @@ export async function getDataPipelineStatus(req: Request, res: Response) {
       error: 'Failed to retrieve data pipeline status',
       message: err.message,
     });
+  }
+}
+
+/**
+ * Genuine NASA OPERA L3 Dynamic Surface Water Extent (DSWx-S1) satellite observations
+ */
+export async function getOperaFloodObservations(req: Request, res: Response) {
+  try {
+    const districtId = (req.query.district_id as string) || (req.query.district as string) || (req.params.districtId as string) || 'ballari';
+    const data = await nasaOperaFloodService.getDistrictObservations(districtId);
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: 'NASA OPERA DSWx satellite query failed', message: err.message });
   }
 }
 

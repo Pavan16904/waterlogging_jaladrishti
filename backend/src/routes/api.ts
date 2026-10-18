@@ -18,7 +18,7 @@ import {
   getLiveDrainageAdvisory
 } from '../controllers/realtimeController.js';
 import { getWaterlogHexes, getWaterlogStatus, getWaterlogSummary } from '../controllers/waterlogController.js';
-import { getDataPipelineStatus, triggerSatelliteFloodCheck, triggerForecastIngestion } from '../controllers/statusController.js';
+import { getDataPipelineStatus, triggerSatelliteFloodCheck, triggerForecastIngestion, getOperaFloodObservations } from '../controllers/statusController.js';
 import { getWeatherByDistrictId } from '../controllers/weatherController.js';
 import { getCropWaterAdvice } from '../controllers/cropAdviceController.js';
 import { getDrainageActions } from '../controllers/drainageActionsController.js';
@@ -34,6 +34,9 @@ router.get('/stream', streamEvents);
 router.get('/incidents', getIncidents);
 router.post('/incidents', createIncident);
 router.patch('/incidents/:id/status', updateIncidentStatus);
+
+// Genuine Satellite-Derived Flood & Water Extent (NASA OPERA DSWx-S1 Sentinel-1 SAR)
+router.get('/satellite/opera-dswx', getOperaFloodObservations);
 
 // Phase 1-3 Live Operational Endpoints
 router.get('/status', getDataPipelineStatus);
