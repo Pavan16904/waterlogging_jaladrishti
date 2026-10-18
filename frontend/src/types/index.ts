@@ -278,11 +278,13 @@ export interface LiveAlert {
   id: string;
   level: 'CRITICAL' | 'WARNING' | 'ADVISORY' | 'INFO';
   district: string;
+  districtId?: string;
   title: string;
   message: string;
   action: string;
   agency: string;
   timestamp: string;
+  status?: string;
 }
 
 export interface RealtimeNowcast {

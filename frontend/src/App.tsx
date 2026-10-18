@@ -463,6 +463,8 @@ export function App() {
         isOpen={isEmergencyOpsOpen}
         onClose={() => setIsEmergencyOpsOpen(false)}
         alerts={liveAlerts}
+        selectedDistrict={selectedDistrict}
+        onRefreshAlerts={loadRealtimeTelemetry}
       />
 
       {/* Global Citizen Lifeline, Crowdsourced SOS & Shelter Center */}
@@ -476,6 +478,7 @@ export function App() {
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
         studyArea={currentArea}
+        selectedDistrict={selectedDistrict}
         liveWeatherData={liveRainfallData}
       />
 

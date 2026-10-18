@@ -120,3 +120,36 @@ export async function createIncident(req: Request, res: Response) {
     });
   }
 }
+
+export async function updateIncidentStatus(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!id || !status) {
+      return res.status(400).json({
+        success: false,
+        error: 'Incident id and status are required'
+      });
+    }
+
+    const now = new Date().toISOString();
+    await query('UPDATE incidents SET status = ?, updated_at = ? WHERE id = ?', [status, now, id]);
+
+    return res.json({
+      success: true,
+      message: `Incident ${id} updated to status ${status}`,
+      id,
+      status,
+      updated_at: now
+    });
+  } catch (error: any) {
+    console.error('Error updating incident status:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to update incident status',
+      details: error.message
+    });
+  }
+}
+

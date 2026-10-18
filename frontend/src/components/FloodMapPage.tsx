@@ -152,6 +152,29 @@ export function getNasaGibsTileUrl(layer: string, dateStr: string): string {
   return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${layer}/default/${cleanDate}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
 }
 
+// Compute exact bounding box coordinates for a GeoJSON feature to fit viewport
+export function getFeatureBounds(feature: any): [[number, number], [number, number]] | null {
+  if (!feature || !feature.geometry) return null;
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+
+  function traverse(coords: any) {
+    if (typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+      const [lng, lat] = coords;
+      if (lng < minLng) minLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lng > maxLng) maxLng = lng;
+      if (lat > maxLat) maxLat = lat;
+    } else if (Array.isArray(coords)) {
+      coords.forEach(traverse);
+    }
+  }
+
+  traverse(feature.geometry.coordinates);
+
+  if (minLng === Infinity || minLat === Infinity) return null;
+  return [[minLng, minLat], [maxLng, maxLat]];
+}
+
 export const BASEMAP_OPTIONS: BasemapOption[] = [
   // ── GROUP 1: GOOGLE MAPS (MAIN VIEWS) ──
   {
@@ -668,6 +691,11 @@ export function FloodMapPage({
             type: 'geojson',
             data: { type: 'FeatureCollection', features: [] },
           },
+          // Selected District Boundary Polygon GeoJSON
+          'src-district-boundary': {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          },
         },
         layers: [
           // Basemap Layers (mutually exclusive visibility) - Google Maps Satellite is default
@@ -811,6 +839,32 @@ export function FloodMapPage({
               'line-opacity': 0.95,
             },
           },
+
+          // Overlay: District Boundary Outline and Glow
+          {
+            id: 'lyr-district-boundary-glow',
+            type: 'line',
+            source: 'src-district-boundary',
+            layout: { visibility: 'visible' },
+            paint: {
+              'line-color': '#0284c7',
+              'line-width': 7,
+              'line-opacity': 0.45,
+              'line-blur': 4,
+            },
+          },
+          {
+            id: 'lyr-district-boundary-line',
+            type: 'line',
+            source: 'src-district-boundary',
+            layout: { visibility: 'visible' },
+            paint: {
+              'line-color': '#38bdf8',
+              'line-width': 2.5,
+              'line-opacity': 0.95,
+              'line-dasharray': [3, 1],
+            },
+          },
         ],
       },
       center: [activeDistrict.lng, activeDistrict.lat],
@@ -853,16 +907,86 @@ export function FloodMapPage({
     };
   }, []);
 
-  // Update center when district changes (preserves zoom level)
+  // Load Karnataka 31 District Boundaries GeoJSON
+  const [districtGeoFeatures, setDistrictGeoFeatures] = useState<Record<string, any>>({});
   useEffect(() => {
+    let mounted = true;
+    fetch('/data/karnataka_districts.geojson')
+      .then((res) => {
+        if (!res.ok) throw new Error(`District boundary request failed: ${res.status}`);
+        return res.json();
+      })
+      .then((geojson) => {
+        if (!mounted || !geojson?.features) return;
+        const mapObj: Record<string, any> = {};
+        geojson.features.forEach((feat: any) => {
+          const dId = (feat.properties?.district_id || feat.id || '').toLowerCase().trim();
+          const dName = (feat.properties?.district_name || '').toLowerCase().trim();
+          if (dId) mapObj[dId] = feat;
+          if (dName) mapObj[dName] = feat;
+        });
+        setDistrictGeoFeatures(mapObj);
+      })
+      .catch((err) => console.warn('Could not load district boundary GeoJSON:', err));
+    return () => { mounted = false; };
+  }, []);
+
+  // Fit map viewport specifically to the selected district boundary geometry
+  const fitToActiveDistrict = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
+
+    const feat = districtGeoFeatures[activeDistrict.id] || 
+                 districtGeoFeatures[activeDistrict.name.toLowerCase().trim()] ||
+                 districtGeoFeatures[activeDistrict.displayName.toLowerCase().trim()];
+
+    if (feat) {
+      const bounds = getFeatureBounds(feat);
+      if (bounds) {
+        map.fitBounds(bounds, {
+          padding: { top: 60, bottom: 60, left: 60, right: 60 },
+          maxZoom: 13.5,
+          duration: 1000,
+        });
+        return;
+      }
+    }
+
+    // Verified district center fallback if boundary geometry is not yet ready
     map.flyTo({
       center: [activeDistrict.lng, activeDistrict.lat],
-      zoom: 9.8,
+      zoom: 10.2,
       duration: 1000,
     });
-  }, [activeDistrict]);
+  }, [activeDistrict, districtGeoFeatures]);
+
+  useEffect(() => {
+    fitToActiveDistrict();
+  }, [activeDistrict, fitToActiveDistrict]);
+
+  // Update district boundary layer on map
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReadyRef.current) return;
+    const source = map.getSource('src-district-boundary') as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+
+    const feat = districtGeoFeatures[activeDistrict.id] || 
+                 districtGeoFeatures[activeDistrict.name.toLowerCase().trim()] ||
+                 districtGeoFeatures[activeDistrict.displayName.toLowerCase().trim()];
+
+    if (feat) {
+      source.setData({
+        type: 'FeatureCollection',
+        features: [feat],
+      });
+    } else {
+      source.setData({
+        type: 'FeatureCollection',
+        features: [],
+      });
+    }
+  }, [activeDistrict, districtGeoFeatures]);
 
   // Synchronize Real-Time Hydrological Heatmap GeoJSON Points from authentic incidents + AI risk hexes
   useEffect(() => {
@@ -1092,7 +1216,12 @@ export function FloodMapPage({
       }
     };
 
-    // 1. Live Incidents (if overlay is enabled)
+    // When Heatmap is ON, normal markers and labels are hidden from the map (Requirement 9)
+    if (heatmapMode) {
+      return;
+    }
+
+    // 1. Live Incidents (if overlay is enabled and Heatmap is OFF)
     if (overlayLiveIncidents) {
       districtIncidents.forEach((inc) => {
         const colors = colorForSeverity(inc.severity);
@@ -1146,7 +1275,7 @@ export function FloodMapPage({
       });
     }
 
-    // 2. Water Level Gauges (if overlay is enabled)
+    // 2. Water Level Gauges (if overlay is enabled and Heatmap is OFF)
     if (overlayWaterLevels) {
       districtWaterLevels.forEach((wl) => {
         const el = document.createElement('div');
@@ -1183,7 +1312,7 @@ export function FloodMapPage({
         markersRef.current.push(marker);
       });
     }
-  }, [districtIncidents, districtWaterLevels, overlayLiveIncidents, overlayWaterLevels]);
+  }, [districtIncidents, districtWaterLevels, overlayLiveIncidents, overlayWaterLevels, heatmapMode]);
 
   const activeBasemapConfig = useMemo(() => {
     return BASEMAP_OPTIONS.find((b) => b.id === basemapMode) || BASEMAP_OPTIONS[0];
@@ -1464,15 +1593,9 @@ export function FloodMapPage({
 
             <button
               type="button"
-              onClick={() => {
-                mapRef.current?.flyTo({
-                  center: [activeDistrict.lng, activeDistrict.lat],
-                  zoom: 9.8,
-                  duration: 800,
-                });
-              }}
+              onClick={fitToActiveDistrict}
               className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200/90 bg-white/95 text-slate-700 shadow-md backdrop-blur hover:text-[#1d6fd8] dark:border-slate-700 dark:bg-[#111a2b]/95 dark:text-slate-200"
-              title="Recenter to District"
+              title="Fit to District Boundary"
             >
               <RotateCcw size={15} />
             </button>

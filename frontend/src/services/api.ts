@@ -248,5 +248,10 @@ export const api = {
   submitIncident: async (data: any): Promise<any> => {
     const res = await axios.post(`${API_BASE}/incidents`, data);
     return res.data;
+  },
+
+  updateIncidentStatus: async (id: string, status: string): Promise<any> => {
+    const res = await axios.patch(`${API_BASE}/incidents/${encodeURIComponent(id)}/status`, { status });
+    return res.data;
   }
 };

@@ -17,10 +17,13 @@ import {
   Home,
   Flame,
   Zap,
-  Info
+  Info,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLanguage } from '../context/LanguageContext';
+import { api } from '../services/api';
+import { KARNATAKA_31_DISTRICTS_WEATHER } from '../data/karnatakaDistrictsWeather';
 
 interface CitizenLifelineModalProps {
   isOpen: boolean;
@@ -37,12 +40,62 @@ export const CitizenLifelineModal: React.FC<CitizenLifelineModalProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<'sos' | 'shelters' | 'health' | 'farmer'>('sos');
 
   // SOS Form state
+  const [selectedDistrictId, setSelectedDistrictId] = useState('ballari');
   const [reporterName, setReporterName] = useState('');
   const [reporterPhone, setReporterPhone] = useState('');
   const [landmark, setLandmark] = useState('');
   const [waterDepth, setWaterDepth] = useState('knee');
   const [urgency, setUrgency] = useState<'moderate' | 'high' | 'critical'>('high');
   const [sosPrepared, setSosPrepared] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submittedIncident, setSubmittedIncident] = useState<any | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const handleSosSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!landmark.trim()) return;
+
+    setSubmitting(true);
+    setSubmitError(null);
+
+    const activeDist = KARNATAKA_31_DISTRICTS_WEATHER.find((d) => d.id === selectedDistrictId) || KARNATAKA_31_DISTRICTS_WEATHER[0];
+    const sev = waterDepth === 'submerged' || waterDepth === 'waist' ? 'Severe' : waterDepth === 'knee' ? 'High' : 'Moderate';
+
+    try {
+      const res = await api.submitIncident({
+        district_id: activeDist.id,
+        district_name: activeDist.displayName,
+        reporter_name: reporterName.trim() || 'Anonymous Citizen',
+        reporter_phone: reporterPhone.trim() || 'Not Provided',
+        landmark: landmark.trim(),
+        water_depth: waterDepth,
+        urgency: urgency,
+        status: 'SUBMITTED_UNVERIFIED',
+        assigned_agency: 'KSDMA / District Monsoon Control Cell',
+        recommended_action: 'Ground validation inspection and drainage outfall clearance',
+        lat: activeDist.lat,
+        lng: activeDist.lng,
+        severity: sev,
+      });
+
+      if (res && res.success) {
+        setSubmittedIncident(res.incident || {
+          id: `inc_${Date.now()}`,
+          district_name: activeDist.displayName,
+          landmark: landmark.trim(),
+          water_depth: waterDepth,
+          status: 'SUBMITTED_UNVERIFIED'
+        });
+        setSosPrepared(true);
+      } else {
+        setSubmitError(res?.error || 'Failed to record report. Please try again or call 112 for emergency response.');
+      }
+    } catch (err: any) {
+      setSubmitError(err?.response?.data?.error || err.message || 'Submission failed. Backend service unavailable.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -162,11 +215,6 @@ export const CitizenLifelineModal: React.FC<CitizenLifelineModalProps> = ({
       certDesc: 'कोई सत्यापित Sentinel-1 बाढ़ उत्पाद या आधिकारिक प्रमाणपत्र एकीकरण उपलब्ध नहीं है।'
     }
   }[lang];
-
-  const handleSosSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSosPrepared(true);
-  };
 
   return (
     <div className="fixed inset-0 z-[1200] flex items-center justify-center p-3 sm:p-5 overflow-y-auto bg-slate-950/80 backdrop-blur-md">
@@ -302,29 +350,47 @@ export const CitizenLifelineModal: React.FC<CitizenLifelineModalProps> = ({
                   </p>
                 </div>
 
-                        {sosPrepared ? (
-                          <div className="p-6 rounded-2xl bg-amber-500/10 border border-amber-500/40 text-amber-200 space-y-3 animate-fadeIn">
+                {sosPrepared ? (
+                  <div className="p-6 rounded-2xl bg-emerald-500/10 border border-emerald-500/40 text-emerald-200 space-y-3 animate-fadeIn">
                     <div className="flex items-center gap-3">
-                              <AlertTriangle className="w-8 h-8 text-amber-400 shrink-0" />
+                      <CheckCircle2 className="w-8 h-8 text-emerald-400 shrink-0" />
                       <div>
-                                <h4 className="text-base font-black text-white">{t.submittedMsg}</h4>
-                                <p className="text-xs text-amber-100 mt-0.5">{t.submittedSub}</p>
+                        <h4 className="text-base font-black text-white">Report Transmitted & Persisted</h4>
+                        <p className="text-xs text-emerald-300/80 mt-0.5">
+                          Successfully recorded in operational incident database.
+                        </p>
                       </div>
                     </div>
-                    <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-xs font-mono text-slate-300">
-                              <div><strong>Draft location:</strong> {landmark || 'Not provided'}</div>
-                      <div><strong>Severity:</strong> {waterDepth.toUpperCase()}</div>
-                              <div><strong>Status:</strong> NOT TRANSMITTED</div>
+                    <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-xs font-mono text-slate-300 space-y-1">
+                      <div><strong>Incident ID:</strong> {submittedIncident?.id}</div>
+                      <div><strong>District:</strong> {submittedIncident?.district_name || selectedDistrictId}</div>
+                      <div><strong>Location:</strong> {landmark}</div>
+                      <div><strong>Reported Depth:</strong> {waterDepth.toUpperCase()}</div>
+                      <div><strong>Verification Status:</strong> <span className="text-amber-400 font-bold">SUBMITTED_UNVERIFIED (Pending Review)</span></div>
                     </div>
+                    <p className="text-[11px] text-slate-400">
+                      Observation stored in local database. It remains marked as pending until validated by field engineers. For urgent life-safety situations, call 112 directly.
+                    </p>
                     <button
-                              onClick={() => setSosPrepared(false)}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold"
+                      onClick={() => {
+                        setSosPrepared(false);
+                        setLandmark('');
+                        setReporterName('');
+                        setReporterPhone('');
+                      }}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition"
                     >
-                      Report Another Incident
+                      Report Another Location
                     </button>
                   </div>
                 ) : (
                   <form onSubmit={handleSosSubmit} className="space-y-4">
+                    {submitError && (
+                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs">
+                        {submitError}
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-slate-300 mb-1">
@@ -352,6 +418,23 @@ export const CitizenLifelineModal: React.FC<CitizenLifelineModalProps> = ({
                           className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs focus:outline-none focus:border-cyan-400"
                         />
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
+                        Karnataka District ({KARNATAKA_31_DISTRICTS_WEATHER.length} Districts Supported)
+                      </label>
+                      <select
+                        value={selectedDistrictId}
+                        onChange={(e) => setSelectedDistrictId(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs focus:outline-none focus:border-cyan-400"
+                      >
+                        {KARNATAKA_31_DISTRICTS_WEATHER.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.displayName} ({d.zone.split('(')[0].trim()})
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     <div>
@@ -400,10 +483,20 @@ export const CitizenLifelineModal: React.FC<CitizenLifelineModalProps> = ({
 
                     <button
                       type="submit"
-                      className="w-full py-3 rounded-xl bg-gradient-to-r from-rose-500 via-red-600 to-amber-600 hover:from-rose-400 hover:to-amber-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-rose-500/30 flex items-center justify-center gap-2 transition-all"
+                      disabled={submitting}
+                      className="w-full py-3 rounded-xl bg-gradient-to-r from-rose-500 via-red-600 to-amber-600 hover:from-rose-400 hover:to-amber-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-rose-500/30 flex items-center justify-center gap-2 transition-all disabled:opacity-60"
                     >
-                      <Send className="w-4 h-4" />
-                      <span>{t.submitBtn}</span>
+                      {submitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Transmitting to Incident Database...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4" />
+                          <span>Submit Report to Control Room</span>
+                        </>
+                      )}
                     </button>
                   </form>
                 )}

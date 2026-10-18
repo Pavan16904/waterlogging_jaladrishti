@@ -23,7 +23,7 @@ import { getWeatherByDistrictId } from '../controllers/weatherController.js';
 import { getCropWaterAdvice } from '../controllers/cropAdviceController.js';
 import { getDrainageActions } from '../controllers/drainageActionsController.js';
 import { streamEvents } from '../controllers/sseController.js';
-import { getIncidents, createIncident } from '../controllers/incidentController.js';
+import { getIncidents, createIncident, updateIncidentStatus } from '../controllers/incidentController.js';
 
 const router = Router();
 
@@ -33,6 +33,7 @@ router.get('/stream', streamEvents);
 // Genuine Waterlogging Incidents & Citizen Reports
 router.get('/incidents', getIncidents);
 router.post('/incidents', createIncident);
+router.patch('/incidents/:id/status', updateIncidentStatus);
 
 // Phase 1-3 Live Operational Endpoints
 router.get('/status', getDataPipelineStatus);
