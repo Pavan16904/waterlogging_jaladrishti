@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" fill="none">
+  <rect width="180" height="180" rx="40" fill="#0a1628"/>
+  <path d="M90 28 C90 28, 50.5 73 50.5 104 C50.5 125.3 68 143 90 143 C112 143 129.5 125.3 129.5 104 C129.5 73 90 28 90 28Z" fill="url(#dropGrad)"/>
+  <path d="M70 116 Q90 93 110 116" stroke="white" stroke-width="6.8" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <path d="M79 128 Q90 116 101 128" stroke="white" stroke-width="7.8" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <circle cx="90" cy="129" r="6.2" fill="white" opacity="0.95"/>
+  <defs>
+    <linearGradient id="dropGrad" x1="50.5" y1="28" x2="129.5" y2="143" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+  </defs>
+</svg>

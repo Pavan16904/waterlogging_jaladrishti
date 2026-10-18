@@ -1,0 +1,60 @@
+# JalaDrishti AI
+
+> Enterprise Earth Observation & AI decision-support platform for municipal flood resilience,
+> satellite waterlogging detection, and precision agro-hydrology across Karnataka, India.
+
+## What this project is
+
+JalaDrishti AI is a full-stack multimodal platform that combines Sentinel-1 SAR imagery,
+Sentinel-2 optical bands, SRTM DEM elevation data, and live Open-Meteo rainfall measurements
+to produce real-time flood inundation maps and actionable engineering advisories for
+municipalities and farmers in Karnataka.
+
+## Core capabilities
+
+- **Flood & Waterlogging Map** — AI-powered (Random Forest / XGBoost) per-pixel flood
+  severity classification (Low / Moderate / Severe) for all 31 Karnataka districts using
+  Sentinel SAR + optical + terrain features.
+
+- **Weather & Radar Observatory** — Real-time 10-day weather forecasts, rainfall accumulation,
+  flood risk ratings, and Doppler radar playback for all Karnataka districts via Open-Meteo API.
+
+- **Crop Water & Irrigation Advisor** — FAO-56 Dual Crop Coefficient engine using
+  Hargreaves-Samani ET₀ with 100+ Karnataka crops, 12 soil series, and daily soil moisture
+  depletion to generate precision irrigation schedules.
+
+- **Drainage Action Center** — Automated priority-ranked (P1 Critical / P2 High / P3 Routine)
+  municipal drainage engineering advisories derived from ML flood severity and terrain slope.
+
+- **Live IoT Sensor Telemetry** — Simulated water-level ultrasonic sensors and pump relay
+  status (8-second polling via Arduino/sensor backend).
+
+- **Emergency Operations Center (EOC)** — Real-time alert triage, critical zone summary,
+  and structured incident response protocols.
+
+- **Citizen SOS & Lifeline Hub** — Crowdsourced flood reports, nearest relief shelter
+  locator, and emergency helpline directory.
+
+## Technical stack
+
+- Frontend: React 18 + TypeScript + Vite + Leaflet + Tailwind CSS + Framer Motion
+- Backend: Node.js + Express + TypeScript (API gateway, PostgreSQL integration)
+- ML Service: Python FastAPI + scikit-learn (Random Forest, XGBoost), geospatial ML
+- Data sources: Sentinel-1 SAR, Sentinel-2 MSI, SRTM DEM, CHIRPS, Open-Meteo (all free/open)
+
+## Public pages
+
+- / — Root; defaults to Flood Map tab
+- /#weather — Weather & Radar Observatory
+- /#crop-water — Crop Water & Irrigation Advisor
+- /#drainage — Drainage Action Center
+
+## Data & privacy
+
+- No user accounts or personal data are collected.
+- All geospatial data is sourced from open/public Earth Observation archives.
+- API keys (Google Maps, etc.) are environment-specific and not exposed.
+
+## Contact
+
+This is a research/academic project developed for Karnataka municipal flood resilience.

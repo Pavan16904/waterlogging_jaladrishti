@@ -1,211 +1,220 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────────
+   JALADRISHTI AI — MINIMALIST FLAT DESIGN SYSTEM (PHASE 3)
+   Design: Flat surfaces, no glass or blur effects, no decorative gradients.
+   WCAG AA Contrast Compliant.
+   Single-hue risk palette: Low #deebf7, Moderate #9ecae1, High #3182bd, Severe #08519c.
+   ──────────────────────────────────────────────────────────── */
+
 @layer base {
   :root {
-    --bg-primary: #f8fafc;
+    --bg-primary: #f4f7fb;
     --bg-surface: #ffffff;
-    --bg-surface-secondary: #f1f5f9;
+    --bg-surface-secondary: #f4f7fb;
+    --bg-surface-hover: #e2e8f0;
+
     --text-primary: #0f172a;
-    --text-secondary: #475569;
-    --text-muted: #94a3b8;
-    --border-color: rgba(226, 232, 240, 0.8);
+    --text-secondary: #334155;
+    --text-muted: #64748b;
+
+    --border: #e5ebf3;
+    --border-subtle: #e5ebf3;
+
+    --accent: #1d6fd8;
+    --accent-hover: #1558a8;
+
+    --radius-card: 14px;
+    --radius-btn: 10px;
+    --radius-pill: 9999px;
+
+    /* Flat design: crisp subtle boundary */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
   }
 
   .dark {
-    --bg-primary: #030712;
-    --bg-surface: #0b0f19;
-    --bg-surface-secondary: #111827;
-    --text-primary: #f9fafb;
-    --text-secondary: #9ca3af;
-    --text-muted: #6b7280;
-    --border-color: rgba(255, 255, 255, 0.08);
+    --bg-primary: #0b1220;
+    --bg-surface: #111a2b;
+    --bg-surface-secondary: #182438;
+    --bg-surface-hover: #24344d;
+
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+
+    --border: #263248;
+    --border-subtle: #202d42;
+
+    --accent: #65a8ff;
+    --accent-hover: #91c1ff;
+
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 1px 3px 0 rgba(0, 0, 0, 0.5);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   body {
     background-color: var(--bg-primary);
     color: var(--text-primary);
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-    transition: background-color 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     letter-spacing: -0.01em;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
-  code, pre, .font-mono {
-    font-family: 'JetBrains Mono', monospace;
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+
+  code, pre, .font-mono, kbd {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  ::selection {
+    background: #0284c7;
+    color: #ffffff;
   }
 }
 
-/* Atmospheric Ambient High-Tech Mesh */
-.bg-ambient-mesh {
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.07) 0px, transparent 40%),
-    radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.06) 0px, transparent 40%),
-    radial-gradient(at 50% 50%, rgba(16, 185, 129, 0.03) 0px, transparent 50%);
-}
-
-.dark .bg-ambient-mesh {
-  background-image: 
-    radial-gradient(at 10% 0%, rgba(14, 165, 233, 0.12) 0px, transparent 45%),
-    radial-gradient(at 90% 10%, rgba(139, 92, 246, 0.10) 0px, transparent 45%),
-    radial-gradient(at 50% 80%, rgba(16, 185, 129, 0.05) 0px, transparent 50%),
-    radial-gradient(at 50% 0%, rgba(3, 7, 18, 0.8) 0px, transparent 70%);
-}
-
-/* Custom modern scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* ── Scrollbars ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.25);
-  border-radius: 9999px;
+  background: #94a3b8;
+  border-radius: 4px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(14, 165, 233, 0.6);
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+/* ── Minimalist Flat Surfaces (No Glass, No Blur) ───────────── */
+.glass-nav, .flat-nav {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
 }
 
-/* World-Class Glass Surfaces */
-.glass-card {
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
-  border-radius: 1.25rem;
+.jd-topbar {
+  border-color: var(--border);
+  background: var(--bg-surface);
 }
 
-.dark .glass-card {
-  background: rgba(11, 15, 25, 0.68);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5), 0 4px 10px -2px rgba(0, 0, 0, 0.4);
+.jd-account-menu > summary::-webkit-details-marker { display: none; }
+.jd-account-menu > summary::marker { content: ''; }
+
+.jd-page-header {
+  min-height: 132px;
 }
 
-/* Futuristic HUD Panel */
-.hud-panel {
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.08);
+.jd-map-grid {
+  height: clamp(520px, calc(100vh - 400px), 780px);
+  flex: none;
 }
 
-.dark .hud-panel {
-  background: rgba(7, 11, 20, 0.88);
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 20px -5px rgba(14, 165, 233, 0.15);
+.glass-card, .flat-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-sm);
 }
 
-.glass-nav {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+.hud-panel, .flat-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-card);
 }
 
-.dark .glass-nav {
-  background: rgba(3, 7, 18, 0.82);
-  backdrop-filter: blur(24px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-/* Hover lift and neon glow */
+/* ── Minimalist Hover ───────────────────────────────────────── */
 .card-hover {
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 .card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(14, 165, 233, 0.3);
-}
-.dark .card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.7), 0 0 25px -4px rgba(14, 165, 233, 0.25), 0 0 0 1px rgba(14, 165, 233, 0.5);
+  border-color: var(--accent);
 }
 
-/* Neon Pill Badges */
-.badge-neon-cyan {
-  background: rgba(14, 165, 233, 0.12);
-  color: #0284c7;
-  border: 1px solid rgba(14, 165, 233, 0.3);
-  box-shadow: 0 0 12px rgba(14, 165, 233, 0.12);
+/* ── Single-Hue Risk Color System (WCAG AA Compliant) ───────── */
+/* Low #deebf7, Moderate #9ecae1, High #3182bd, Severe #08519c */
+.risk-low-bg { background-color: #deebf7; color: #08306b; }
+.risk-moderate-bg { background-color: #9ecae1; color: #08306b; }
+.risk-high-bg { background-color: #3182bd; color: #ffffff; }
+.risk-severe-bg { background-color: #08519c; color: #ffffff; }
+
+.dark .risk-low-bg { background-color: #1e3a5f; color: #deebf7; border: 1px solid #3182bd; }
+.dark .risk-moderate-bg { background-color: #1d4ed8; color: #ffffff; }
+.dark .risk-high-bg { background-color: #2563eb; color: #ffffff; }
+.dark .risk-severe-bg { background-color: #1e40af; color: #ffffff; }
+
+/* ── Diagonal Hatch Pattern for Confidence < 0.6 ────────────── */
+.diagonal-hatch {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.12),
+    rgba(0, 0, 0, 0.12) 4px,
+    transparent 4px,
+    transparent 8px
+  );
 }
-.dark .badge-neon-cyan {
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  box-shadow: 0 0 12px rgba(14, 165, 233, 0.15);
+.dark .diagonal-hatch {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.16),
+    rgba(255, 255, 255, 0.16) 4px,
+    transparent 4px,
+    transparent 8px
+  );
 }
 
-.badge-neon-rose {
-  background: rgba(244, 63, 94, 0.12);
-  color: #e11d48;
-  border: 1px solid rgba(244, 63, 94, 0.3);
-  box-shadow: 0 0 12px rgba(244, 63, 94, 0.12);
-}
-.dark .badge-neon-rose {
-  color: #fb7185;
-  border: 1px solid rgba(251, 113, 133, 0.3);
-  box-shadow: 0 0 12px rgba(244, 63, 94, 0.15);
-}
-
-.badge-neon-emerald {
-  background: rgba(16, 185, 129, 0.12);
-  color: #059669;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.12);
-}
-.dark .badge-neon-emerald {
-  color: #34d399;
-  border: 1px solid rgba(52, 211, 153, 0.3);
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+/* ── Badges ─────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--bg-surface-secondary);
+  color: var(--text-primary);
 }
 
-.badge-neon-amber {
-  background: rgba(245, 158, 11, 0.12);
-  color: #d97706;
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.12);
+/* ── Skeleton flat pulse ────────────────────────────────────── */
+.skeleton-box {
+  background-color: var(--bg-surface-secondary);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  border-radius: 4px;
 }
-.dark .badge-neon-amber {
-  color: #fbbf24;
-  border: 1px solid rgba(251, 191, 36, 0.3);
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.15);
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .5; }
 }
 
-/* Map Containers */
-.leaflet-container {
+/* ── Map Container ──────────────────────────────────────────── */
+.maplibregl-map {
   width: 100%;
   height: 100%;
-  border-radius: 1.25rem;
-  z-index: 1;
 }
 
-.leaflet-popup-content-wrapper {
-  background: #0f172a !important;
-  color: #f8fafc !important;
-  border-radius: 1rem !important;
-  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.6) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
-  padding: 4px !important;
-}
-
-.leaflet-popup-tip {
-  background: #0f172a !important;
-}
-
-/* Animations */
-@keyframes radar-sweep {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.animate-radar-sweep {
-  animation: radar-sweep 4s linear infinite;
+/* ── Print Stylesheet ───────────────────────────────────────── */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+  }
+  header, footer, nav, button:not(.print-keep), .no-print {
+    display: none !important;
+  }
+  .glass-card, .flat-card, .hud-panel {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #000000 !important;
+    box-shadow: none !important;
+  }
 }

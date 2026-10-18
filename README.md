@@ -70,7 +70,7 @@ $$\mathbf{X} = [\text{NDWI}, \text{MNDWI}, \text{NDVI}, \text{VV}, \text{VH}, \t
 ### Prerequisites
 1. **Node.js 20+** & npm
 2. **Python 3.10+**
-3. **PostgreSQL 15+** on port `5432` with password `abhi2003`
+3. **PostgreSQL 15+** (optional — transparent fallback to SQLite `backend/data/waterlogging.sqlite` if PostgreSQL is not running. Configure credentials via `backend/.env`).
 
 ### 1-Click Launch (Windows)
 Double-click `start_all.bat` or run:
@@ -94,4 +94,28 @@ npm run dev
 
 - **Frontend UI**: [http://localhost:3000](http://localhost:3000)
 - **Backend API**: [http://localhost:5000/api](http://localhost:5000/api)
-- **FastAPI Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **SSE Stream**: `GET http://localhost:5000/api/stream`
+- **FastAPI ML Service**: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+---
+
+## 🧪 Phase 4 Validation & Reproducibility
+
+Run the automated one-command reproduction suite (ML validation benchmark, backend test suite, frontend bundle build):
+
+```powershell
+# Windows PowerShell
+.\scripts\reproduce_all.ps1
+
+# Linux / macOS
+./scripts/reproduce_all.sh
+```
+
+Validation artifacts are generated directly in `results/`:
+- `results/metrics_validation.csv`: Quantitative spatial block CV metrics across benchmark districts
+- `results/confusion_matrices.png`: Normalized confusion matrices per district
+- `results/ablation_bar.png`: Feature group ablation comparison (rainfall, terrain, soil)
+- `results/calibration_curve.png`: Isotonic probability calibration curves
+- `results/shap_summary.png`: TreeExplainer feature importance attribution
+- `results/README.md`: Formal methodology, interpretation guide, and limitations
+

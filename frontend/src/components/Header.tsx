@@ -1,27 +1,34 @@
-import React from 'react';
-import { 
-  Satellite, 
-  Map, 
-  CloudSun, 
-  Sprout, 
-  ShieldAlert, 
-  FileDown, 
-  Sun, 
-  Moon,
-  CheckCircle2,
+import React, { useEffect, useState } from 'react';
+import {
+  Bell,
   BrainCircuit,
-  Radio
+  CloudRain,
+  ChevronDown,
+  FileText,
+  Map,
+  Moon,
+  Sprout,
+  Sun,
+  Siren,
+  Waves,
+  Shield,
+  Users,
 } from 'lucide-react';
+import { api } from '../services/api';
 
-export type MainTabType = 'map' | 'weather' | 'crop-water' | 'drainage';
+export type MainTabType = 'overview' | 'map' | 'weather' | 'crop-water' | 'drainage';
+type HeaderAction = 'eoc' | 'sos' | 'models' | 'reports';
 
 interface HeaderProps {
   activeTab: MainTabType;
   setActiveTab: (tab: MainTabType) => void;
   theme: 'dark' | 'light';
   setTheme: (theme: 'dark' | 'light') => void;
-  onOpenExportModal: () => void;
-  onOpenModelModal?: () => void;
+  notificationCount: number;
+  onOpenEoc: () => void;
+  onOpenSos: () => void;
+  onOpenModels: () => void;
+  onOpenReports: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -29,117 +36,201 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   theme,
   setTheme,
-  onOpenExportModal,
-  onOpenModelModal
+  notificationCount,
+  onOpenEoc,
+  onOpenSos,
+  onOpenModels,
+  onOpenReports,
 }) => {
+  const [ageSeconds, setAgeSeconds] = useState<number | null>(null);
+  const [connected, setConnected] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  const actionHandlers: Record<HeaderAction, () => void> = {
+    eoc: onOpenEoc,
+    sos: onOpenSos,
+    models: onOpenModels,
+    reports: onOpenReports,
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchStatus = async () => {
+      try {
+        const statusData = await api.getPipelineStatus();
+        const openMeteo = statusData?.sources?.find((source: any) => source.source === 'open_meteo');
+        const dataAge = typeof openMeteo?.age_seconds === 'number'
+          ? openMeteo.age_seconds
+          : openMeteo?.fetched_at
+            ? Math.max(0, Math.floor((Date.now() - new Date(openMeteo.fetched_at).getTime()) / 1000))
+            : null;
+        const connectedStatus = Boolean(statusData?.timestamp || statusData?.summary);
+
+        if (mounted) {
+          setConnected(connectedStatus);
+          setAgeSeconds(dataAge);
+        }
+      } catch (error) {
+        if (mounted) {
+          setConnected(false);
+          setAgeSeconds(null);
+        }
+        console.error('Failed to load live data status:', error);
+      }
+    };
+
+    void fetchStatus();
+    const interval = window.setInterval(() => void fetchStatus(), 30_000);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const statusColor = !connected
+    ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300'
+    : ageSeconds === null
+      ? 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-300'
+      : ageSeconds < 1800
+        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300'
+        : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-300';
+  const statusLabel = !connected
+    ? 'Disconnected'
+    : ageSeconds === null
+      ? 'Connected · Syncing'
+      : ageSeconds > 3600
+        ? `Stale · ${Math.floor(ageSeconds / 3600)}h`
+        : `Live · ${Math.max(1, Math.floor(ageSeconds / 60))} min`;
+
+  const tabs = [
+    { label: 'Flood Map', Icon: Map, tab: 'map' as const },
+    { label: 'Weather & Radar', Icon: CloudRain, tab: 'weather' as const },
+    { label: 'Crop Advisor', Icon: Sprout, tab: 'crop-water' as const },
+    { label: 'Drainage Actions', Icon: Shield, tab: 'drainage' as const },
+    { label: 'Emergency EOC', Icon: Siren, action: 'eoc' as const },
+    { label: 'Citizen SOS', Icon: Users, action: 'sos' as const },
+    { label: 'AI Models', Icon: BrainCircuit, action: 'models' as const },
+    { label: 'Reports', Icon: FileText, action: 'reports' as const },
+  ];
+
   return (
-    <header className="glass-nav border-b px-4 lg:px-8 py-3 flex items-center justify-between gap-4 sticky top-0 z-50 backdrop-blur-2xl transition-all">
-      {/* Brand & Platform Identity */}
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="relative flex items-center justify-center w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 via-sky-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 border border-cyan-400/40">
-          <Satellite className="w-5 h-5 animate-pulse" />
-          <span className="absolute -top-1 -right-1 flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-slate-950"></span>
+    <header className="jd-topbar sticky top-0 z-40 border-b bg-white dark:bg-[#111a2b]">
+      <div className="jd-brand-row mx-auto flex min-h-[76px] max-w-[1600px] items-center justify-between gap-4 px-4 sm:px-6">
+        <a href="/" className="flex min-w-0 shrink-0 items-center gap-3" aria-label="JalaDrishti AI home">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1d6fd8] text-white">
+            <Waves size={22} strokeWidth={2.4} />
           </span>
-        </div>
-
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-black tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-500 bg-clip-text text-transparent">
-              JalaDrishti AI
+          <span className="min-w-0">
+            <span className="flex items-center gap-2">
+              <span className="whitespace-nowrap text-[17px] font-bold tracking-tight text-slate-900 dark:text-white">JalaDrishti AI</span>
             </span>
-            <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full badge-neon-cyan uppercase tracking-wider">
-              Karnataka SAR
+            <span className="hidden text-[10px] leading-4 text-slate-500 dark:text-slate-400 lg:block">
+              Urban Inundation Radar &amp; Agricultural Waterlogging Prevention System
             </span>
-          </div>
-          <span className="text-[10px] font-medium text-slate-400 tracking-tight hidden md:block">
-            Satellite Flood Radar & Autonomous Hydrological Intelligence
           </span>
-        </div>
-      </div>
+        </a>
 
-      {/* Spacious Segmented 4-Page Navigation */}
-      <nav aria-label="Main Navigation" className="flex items-center p-1.5 rounded-2xl bg-slate-100/90 dark:bg-slate-900/90 border border-slate-200 dark:border-white/10 shadow-inner">
-        <button
-          onClick={() => setActiveTab('map')}
-          className={`flex items-center gap-2 px-3.5 md:px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all duration-200 ${
-            activeTab === 'map'
-              ? 'bg-gradient-to-r from-cyan-500/20 via-sky-500/20 to-blue-500/20 text-cyan-400 border border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.25)]'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-          }`}
-        >
-          <Map className="w-4 h-4 text-cyan-400" />
-          <span>Flood Map</span>
-        </button>
+        <nav aria-label="Main navigation" className="jd-desktop-nav hidden items-center gap-1 lg:flex">
+          {tabs.map(({ label, Icon, tab, action }) => {
+            const selected = tab ? activeTab === tab : false;
+            return (
+              <button
+                key={label}
+                type="button"
+                aria-current={selected ? 'page' : undefined}
+                onClick={() => tab ? setActiveTab(tab) : action && actionHandlers[action]()}
+                className={`flex min-w-[76px] flex-col items-center gap-1 rounded-xl border px-2.5 py-2 text-[10px] font-semibold leading-tight transition-colors ${
+                  selected
+                    ? 'border-[#b8d7fa] bg-[#eaf3ff] text-[#1558a8] dark:border-[#285188] dark:bg-[#172e4c] dark:text-[#9bc8ff]'
+                    : 'border-transparent text-slate-500 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:bg-slate-800 dark:hover:text-white'
+                }`}
+              >
+                <Icon size={18} strokeWidth={1.9} />
+                <span className="whitespace-nowrap">{label}</span>
+              </button>
+            );
+          })}
+        </nav>
 
-        <button
-          onClick={() => setActiveTab('weather')}
-          className={`flex items-center gap-2 px-3.5 md:px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all duration-200 ${
-            activeTab === 'weather'
-              ? 'bg-gradient-to-r from-sky-500/20 to-blue-500/20 text-sky-400 border border-sky-500/40 shadow-[0_0_15px_rgba(14,165,233,0.25)]'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-          }`}
-        >
-          <CloudSun className="w-4 h-4 text-sky-400" />
-          <span>Weather</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('crop-water')}
-          className={`flex items-center gap-2 px-3.5 md:px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all duration-200 ${
-            activeTab === 'crop-water'
-              ? 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.25)]'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-          }`}
-        >
-          <Sprout className="w-4 h-4 text-emerald-400" />
-          <span>Crop Advisor</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('drainage')}
-          className={`flex items-center gap-2 px-3.5 md:px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all duration-200 ${
-            activeTab === 'drainage'
-              ? 'bg-gradient-to-r from-rose-500/20 to-amber-500/20 text-rose-400 border border-rose-500/40 shadow-[0_0_15px_rgba(244,63,94,0.25)]'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-          }`}
-        >
-          <ShieldAlert className="w-4 h-4 text-rose-400" />
-          <span>Drainage Actions</span>
-        </button>
-      </nav>
-
-      {/* Right Controls */}
-      <div className="flex items-center gap-2.5 text-xs">
-        {onOpenModelModal && (
-          <button
-            onClick={onOpenModelModal}
-            className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 font-bold border border-purple-500/30 transition-all shadow-[0_0_12px_rgba(168,85,247,0.15)]"
-            title="View ML Model Architecture & ROC/Ablation Metrics"
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <a
+            href="/api/status"
+            aria-label={`Open data status: ${statusLabel}`}
+            className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1.5 text-[11px] font-semibold sm:px-3 ${statusColor}`}
           >
-            <BrainCircuit className="w-3.5 h-3.5" />
-            <span>AI Ensemble (99.9%)</span>
-          </button>
-        )}
+            <span className={`h-2 w-2 rounded-full ${!connected || ageSeconds === null || ageSeconds > 3600 ? 'bg-red-500' : ageSeconds < 900 ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+            <span className="hidden sm:inline">{statusLabel}</span>
+          </a>
 
-        <button
-          onClick={onOpenExportModal}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold border border-slate-200 dark:border-white/10 transition-all shadow-sm"
-        >
-          <FileDown className="w-4 h-4 text-cyan-400" />
-          <span className="hidden sm:inline">Export PDF</span>
-        </button>
+          <div className="relative">
+            <button
+              type="button"
+              aria-label={`Notifications${notificationCount > 0 ? `, ${notificationCount} unread` : ''}`}
+              aria-expanded={notificationsOpen}
+              onClick={() => setNotificationsOpen((open) => !open)}
+              className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <Bell size={19} />
+              {notificationCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                  {notificationCount > 99 ? '99+' : notificationCount}
+                </span>
+              )}
+            </button>
+            {notificationsOpen && (
+              <div className="absolute right-0 top-12 z-50 w-64 rounded-xl border border-[#e5ebf3] bg-white p-4 text-sm shadow-lg dark:border-slate-700 dark:bg-[#111a2b]">
+                <p className="font-semibold text-slate-900 dark:text-white">Notifications</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {notificationCount > 0 ? `${notificationCount} active alert${notificationCount === 1 ? '' : 's'}.` : 'No new alerts.'}
+                </p>
+              </div>
+            )}
+          </div>
 
-        {/* Theme Toggle */}
-        <button
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-white/10 transition-colors shadow-sm"
-          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
-        >
-          {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
-        </button>
+          <details className="jd-account-menu relative">
+            <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full p-1 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1e293b] text-xs font-bold text-white dark:bg-[#203a5c] dark:text-[#a8d0ff]">AD</span>
+              <ChevronDown size={14} className="hidden text-slate-500 sm:block" />
+            </summary>
+            <div className="absolute right-0 top-12 z-50 w-56 rounded-xl border border-[#e5ebf3] bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-[#111a2b]">
+              <div className="border-b border-slate-100 px-2 pb-3 dark:border-slate-700">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">JalaDrishti Operator</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Karnataka operations</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className="mt-2 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                {theme === 'dark' ? 'Light appearance' : 'Dark appearance'}
+              </button>
+            </div>
+          </details>
+        </div>
       </div>
+
+      <nav aria-label="Mobile navigation" className="jd-mobile-nav flex gap-1 overflow-x-auto border-t border-slate-100 px-3 py-2 lg:hidden dark:border-slate-800">
+        {tabs.map(({ label, Icon, tab, action }) => {
+          const selected = tab ? activeTab === tab : false;
+          return (
+            <button
+              key={label}
+              type="button"
+              aria-current={selected ? 'page' : undefined}
+              onClick={() => tab ? setActiveTab(tab) : action && actionHandlers[action]()}
+              className={`flex min-w-[76px] shrink-0 flex-col items-center gap-1 rounded-lg border px-2 py-1.5 text-[9px] font-semibold ${
+                selected
+                  ? 'border-[#b8d7fa] bg-[#eaf3ff] text-[#1558a8] dark:border-[#285188] dark:bg-[#172e4c] dark:text-[#9bc8ff]'
+                  : 'border-transparent text-slate-500 dark:text-slate-400'
+              }`}
+            >
+              <Icon size={17} />
+              <span className="whitespace-nowrap">{label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </header>
   );
 };

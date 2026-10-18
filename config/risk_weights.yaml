@@ -1,0 +1,52 @@
+version: "1.0.0"
+
+# ==============================================================================
+# JalaDrishti AI - Waterlogging Risk Model Weights & Normalization Configuration
+# All weights, decay constants, and thresholds below are empirical baseline
+# assumptions to be tuned against historical validation datasets in Phase 4.
+# ==============================================================================
+
+weights:
+  # Nominal term weights when satellite/gauge observed rainfall is present
+  # (Sum = 1.00)
+  observed_rain: 0.15
+  model_rain: 0.30
+  antecedent_wetness: 0.20
+  soil_drainage: 0.15
+  twi: 0.15
+  inverted_slope: 0.05
+
+  # Proportional weights when observed rainfall is unconfigured/missing
+  # (Sum = 1.00)
+  fallback_without_observed:
+    model_rain: 0.35
+    antecedent_wetness: 0.20
+    soil_drainage: 0.20
+    twi: 0.15
+    inverted_slope: 0.10
+
+# Normalization parameters (fixed absolute ranges, never normalized by batch max)
+normalization:
+  rainfall_3d_max_mm: 150.0    # 150mm over 3 days represents extreme monsoon saturation
+  twi_min: 2.0                 # Minimum Topographic Wetness Index (crests / ridges)
+  twi_max: 18.0                # Maximum Topographic Wetness Index (alluvial floodplains)
+  slope_max_deg: 20.0          # Slopes >= 20 deg have 0 waterlogging propensity (steep runoff)
+  api_k_decay: 0.85            # Daily Antecedent Precipitation Index recession factor k=0.85
+  api_initial_fraction: 0.5    # Initial soil water proxy = 0.5 * WHC on first cold run
+
+# Risk class categorical thresholds (0-100)
+risk_classes:
+  low_max: 25.0                # 0 - 25: Low Risk
+  moderate_max: 50.0           # 25 - 50: Moderate Risk
+  high_max: 75.0               # 50 - 75: High Risk
+  severe_max: 100.0            # 75 - 100: Severe Risk
+
+# Multiplicative confidence penalties (compounded starting from 1.0)
+confidence_penalties:
+  model_only_rainfall: 0.80          # Rainfall source is NWP model only (no ground truth)
+  observed_rainfall_missing: 0.85    # NASA GPM IMERG / gauge observation unconfigured/missing
+  ndwi_missing: 0.95                 # Cloud-free optical Sentinel-2 NDWI composite unavailable
+  input_data_stale_60min: 0.70       # NWP forecast payload age exceeds 60 minutes
+  non_agricultural_cropland: 0.80    # Hex cropland fraction < 0.1 (urban / forested / water)
+  cropland_fraction_threshold: 0.10  # Minimum cropland fraction threshold
+  static_input_missing: 0.60         # SRTM DEM or SoilGrids layer missing for hex

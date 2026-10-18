@@ -6,8 +6,41 @@ import { calculateIrrigation, getCropCatalog, getKarnatakaDistricts, getPastIrri
 import { getModelMetrics } from '../controllers/metricsController.js';
 import { exportCsvReport, getReportSummaryJson } from '../controllers/reportController.js';
 import { getDistrictForecast, getAllKarnatakaDistrictsWeather } from '../controllers/weatherController.js';
+import { 
+  getRadarMeta, 
+  getIoTSensors, 
+  updatePumpActuator, 
+  getLiveAlerts, 
+  getRealtimeNowcast,
+  getTodayRainfall,
+  getEarlyWarningForecast,
+  getSatelliteMeta,
+  getLiveDrainageAdvisory
+} from '../controllers/realtimeController.js';
+import { getWaterlogHexes, getWaterlogStatus, getWaterlogSummary } from '../controllers/waterlogController.js';
+import { getDataPipelineStatus, triggerSatelliteFloodCheck, triggerForecastIngestion } from '../controllers/statusController.js';
+import { getWeatherByDistrictId } from '../controllers/weatherController.js';
+import { getCropWaterAdvice } from '../controllers/cropAdviceController.js';
+import { getDrainageActions } from '../controllers/drainageActionsController.js';
+import { streamEvents } from '../controllers/sseController.js';
+import { getIncidents, createIncident } from '../controllers/incidentController.js';
 
 const router = Router();
+
+// Phase 4: Live SSE stream
+router.get('/stream', streamEvents);
+
+// Genuine Waterlogging Incidents & Citizen Reports
+router.get('/incidents', getIncidents);
+router.post('/incidents', createIncident);
+
+// Phase 1-3 Live Operational Endpoints
+router.get('/status', getDataPipelineStatus);
+router.get('/weather/district/:id', getWeatherByDistrictId);
+router.get('/crop/advice', getCropWaterAdvice);
+router.get('/drainage/actions', getDrainageActions);
+router.post('/pipeline/ingest', triggerForecastIngestion);
+router.post('/satellite/flood-check/:districtId', triggerSatelliteFloodCheck);
 
 // Study Areas
 router.get('/study-areas', getStudyAreas);
@@ -37,5 +70,21 @@ router.get('/reports/summary/:runId', getReportSummaryJson);
 // Real-Time Open-Meteo Weather Observatory
 router.get('/weather/forecast/:district', getDistrictForecast);
 router.get('/weather/summary', getAllKarnatakaDistrictsWeather);
+
+// Real-Time Radar, IoT Telemetry, Remote Actuators & Dynamic Nowcast
+router.get('/realtime/radar-meta', getRadarMeta);
+router.get('/realtime/satellite-meta', getSatelliteMeta);
+router.get('/realtime/iot-sensors', getIoTSensors);
+router.post('/realtime/pump-actuator', updatePumpActuator);
+router.get('/realtime/live-alerts', getLiveAlerts);
+router.get('/realtime/nowcast/:districtId', getRealtimeNowcast);
+router.get('/realtime/today-rainfall', getTodayRainfall);
+router.get('/realtime/early-warning/:districtId', getEarlyWarningForecast);
+router.get('/realtime/drainage-advisory/:districtId', getLiveDrainageAdvisory);
+
+// Modelled Waterlogging Risk Hex Map Endpoints (All 31 Districts)
+router.get('/waterlog/hexes', getWaterlogHexes);
+router.get('/waterlog/status', getWaterlogStatus);
+router.get('/waterlog/summary', getWaterlogSummary);
 
 export default router;

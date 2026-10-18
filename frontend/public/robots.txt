@@ -1,0 +1,17 @@
+# robots.txt for JalaDrishti AI
+# https://www.robotstxt.org/
+
+User-agent: *
+Allow: /
+
+# Private API routes — not crawlable
+Disallow: /api/
+
+# Vite dev assets — not for indexing
+Disallow: /src/
+Disallow: /@vite/
+Disallow: /@fs/
+Disallow: /node_modules/
+
+# Sitemap location
+Sitemap: http://localhost:3000/sitemap.xml

@@ -25,6 +25,16 @@ export interface SeverityZone {
   ndvi?: number;
   vv_db?: number;
   vh_db?: number;
+  crop_type?: string;
+  waterlogging_status?: string;
+  source?: string;
+  source_status?: 'live' | 'delayed' | 'unavailable' | 'simulated';
+  observation_time?: string;
+  confidence?: number;
+  field_id?: string;
+  village?: string;
+  current_status?: string;
+  suggested_action?: string;
   geojson_feature: {
     type: string;
     geometry: {
@@ -160,3 +170,167 @@ export interface ModelMetrics {
     roc_auc: number;
   }>;
 }
+
+export interface IoTSensor {
+  id: string;
+  name: string;
+  districtId: string;
+  districtName: string;
+  lat: number;
+  lng: number;
+  sensorType: 'ultrasonic_level' | 'hydrostatic_pressure' | 'radar_velocity' | 'swale_optical';
+  currentDepthM: number;
+  warningThresholdM: number;
+  dangerThresholdM: number;
+  maxDepthM: number;
+  flowRateLps: number;
+  siltationPct: number;
+  pumpStatus: 'AUTO_IDLE' | 'AUTO_RUNNING' | 'MANUAL_ON' | 'MANUAL_OFF' | 'EMERGENCY_BOOST';
+  pumpCapacityHp: number;
+  pumpDischargeLps: number;
+  batteryPct: number;
+  solarWatts: number;
+  signalDbm: number;
+  trend: 'rising' | 'falling' | 'stable';
+  history: Array<{ time: string; depthM: number; flowLps: number }>;
+  lastUpdated: string | null;
+}
+
+export interface RadarMeta {
+  provider: string;
+  host: string;
+  pastFrames: Array<{ time: number; path: string }>;
+  nowcastFrames: Array<{ time: number; path: string }>;
+  satelliteFrames: Array<{ time: number; path: string }>;
+  colorScheme: number;
+  smooth: number;
+  snow: number;
+  lastUpdated: string;
+  isCached?: boolean;
+  isStale?: boolean;
+  providerStatus?: string;
+}
+
+export interface SatelliteMeta {
+  provider: string;
+  sensor: string;
+  product: string;
+  snapshotDate: string;
+  imageryDate?: string;
+  layer?: string;
+  resolution?: string;
+  maxNativeZoom: number;
+  tileUrlTemplate: string;
+  viirsUrlTemplate?: string;
+  attribution: string;
+  coverageNotice: string;
+  cacheTtlHours: number;
+  providerStatus?: string;
+  lastUpdated?: string;
+}
+
+export interface LiveDrainageAdvisory {
+  id: string;
+  district: string;
+  districtName?: string;
+  zone_name: string;
+  guidanceType: string;
+  guidanceLevel?: string;
+  riskCategory: string;
+  riskColor: string;
+  priority: string;
+  guidanceHeadline: string;
+  diagnosis: string;
+  action_recommendation: string;
+  recommendedAction?: string;
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+  };
+  metrics?: {
+    provider: string;
+    dataTimestamp: string;
+    forecastRainfall24hMm: number;
+    forecastRainfall48hMm: number;
+    peakHourlyForecastMm: number;
+    providerLatencyMs: number;
+  };
+  inputValues?: {
+    coordinates: { lat: number; lng: number };
+    modeledDailyPrecipitationMm: number;
+    forecast24hPrecipMm: number;
+    peakHourlyForecastMm: number;
+    currentPrecipitationMm: number;
+  };
+  provider: string;
+  dataTimestamp: string;
+  advisoryTimestamp?: string;
+  disclaimer: string;
+  advisoryUpdatedAt?: string;
+  isCached?: boolean;
+  isStale?: boolean;
+  providerStatus?: string;
+  lastUpdated?: string;
+  backendRetrievedAt?: string;
+}
+
+export interface LiveAlert {
+  id: string;
+  level: 'CRITICAL' | 'WARNING' | 'ADVISORY' | 'INFO';
+  district: string;
+  title: string;
+  message: string;
+  action: string;
+  agency: string;
+  timestamp: string;
+}
+
+export interface RealtimeNowcast {
+  district: string;
+  coordinates: { lat: number; lng: number };
+  zone: string;
+  dataType: string;
+  providerValidTime: string;
+  backendRetrievedAt: string;
+  providerLatencyMs: number;
+  telemetry: {
+    modeledCurrentPrecipitationMm: number;
+    currentTempC: number;
+    currentHumidityPct: number;
+    currentWindSpeedKmh: number;
+  };
+  nowcastAdvice: string;
+}
+
+export interface WaterlogHex {
+  h3_index: string;
+  resolution: number;
+  district_id: string;
+  valid_time: string;
+  fetched_at: string;
+  risk_score: number;
+  risk_class: 'Low' | 'Moderate' | 'High' | 'Severe';
+  confidence: number;
+  components: {
+    rainfall_mm: number;
+    soil_drainage_class: string;
+    twi: number;
+    slope_deg: number;
+    driver_sentence: string;
+    district_name: string;
+  };
+  source: string;
+  lat: number;
+  lng: number;
+}
+
+export interface WaterlogStatus {
+  success: boolean;
+  latest_valid_time: string | null;
+  fetched_at: string | null;
+  source: string;
+  total_hexes: number;
+  valid_times: string[];
+  row_count_per_district: Record<string, number>;
+}
+

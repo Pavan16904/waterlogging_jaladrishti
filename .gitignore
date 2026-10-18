@@ -19,6 +19,9 @@ out/
 .env.test.local
 .env.production.local
 *.env
+*.sqlite
+*.sqlite3
+backend/data/
 
 # Python & ML Artifacts
 __pycache__/
@@ -87,3 +90,8 @@ desktop.ini
 *.swp
 *.swo
 *~
+
+# Quarantine & Temporary Backups
+.quarantine/
+*.bak
+*.timestamp-*
