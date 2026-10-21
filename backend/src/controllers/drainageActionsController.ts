@@ -4,6 +4,7 @@ import path from 'path';
 import yaml from 'yaml';
 import { fileURLToPath } from 'url';
 import { query } from '../db/index.js';
+import { canonicalDistrictId } from '../utils/districtUtils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,7 +28,8 @@ function loadActionLibrary(): ActionLibrary {
 
 export async function getDrainageActions(req: Request, res: Response): Promise<void> {
   try {
-    const districtId = ((req.query.district as string) || (req.query.district_id as string) || 'ballari').toLowerCase();
+    const rawDist = (req.query.district as string) || (req.query.district_id as string) || 'ballari';
+    const districtId = canonicalDistrictId(rawDist);
     const asOf = typeof req.query.date === 'string' ? req.query.date : '';
     const actionLib = loadActionLibrary();
 

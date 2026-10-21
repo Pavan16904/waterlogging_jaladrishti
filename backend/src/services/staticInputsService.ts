@@ -37,9 +37,8 @@ export class StaticInputsService {
     this.isProcessing = true;
 
     try {
-      // Find hexes that don't have static baselines computed yet
       const uncomputed = await query(
-        `SELECT h3_index, district_id, lat, lng FROM district_hexes WHERE slope_deg IS NULL LIMIT $1`,
+        `SELECT h3_index, lat, lng FROM district_hexes WHERE slope_deg IS NULL LIMIT $1`,
         [batchSize]
       );
 
@@ -53,35 +52,22 @@ export class StaticInputsService {
       await query('BEGIN');
       try {
         for (const row of uncomputed.rows) {
-          const lat = row.lat;
-          const lng = row.lng;
-
-          // 1. Topographic derivation from Karnataka Western Ghats & Deccan Plateau geomorphology
+          const { lat, lng } = row;
           const isWesternGhats = lng < 75.8 && lat > 11.8 && lat < 15.5;
           const isCoastal = lng < 74.8;
-          const baseSlope = isWesternGhats ? 8.5 + (Math.sin(lat * 10) * 4.5) : (isCoastal ? 1.2 : 2.5 + (Math.cos(lng * 5) * 1.5));
+          const baseSlope = isWesternGhats ? 8.5 + Math.sin(lat * 10) * 4.5 : isCoastal ? 1.2 : 2.5 + Math.cos(lng * 5) * 1.5;
           const slopeDeg = Math.max(0.5, Math.round(baseSlope * 100) / 100);
-
-          // Topographic Wetness Index: TWI = ln(a / tan(beta))
           const betaRad = Math.max(0.01, (slopeDeg * Math.PI) / 180);
-          const specificCatchmentArea = isCoastal ? 450 : (isWesternGhats ? 150 : 320);
-          const twi = Math.round(Math.log(specificCatchmentArea / Math.tan(betaRad)) * 100) / 100;
-
-          // 2. SoilGrids hydraulic properties
-          const isNorthKarnataka = lat > 15.0;
-          const drainageProxy = isNorthKarnataka ? 0.35 : 0.65;
-          const waterHoldingCapacity = isNorthKarnataka ? 180.0 : 120.0;
-
-          // 3. ESA WorldCover: 40 = Cropland, 50 = Built-up, 10 = Tree cover, 80 = Water
-          const isUrban = (Math.abs(lat - 12.9716) < 0.25 && Math.abs(lng - 77.5946) < 0.25);
-          const landCover = isUrban ? 'built_up' : (isWesternGhats ? 'tree_cover' : 'cropland');
-          const isCropland = landCover === 'cropland';
-
+          const sca = isCoastal ? 450 : isWesternGhats ? 150 : 320;
+          const twi = Math.round(Math.log(sca / Math.tan(betaRad)) * 100) / 100;
+          const isNorth = lat > 15.0;
+          const drainageProxy = isNorth ? 0.35 : 0.65;
+          const waterHoldingCapacity = isNorth ? 180.0 : 120.0;
+          const isUrban = Math.abs(lat - 12.9716) < 0.25 && Math.abs(lng - 77.5946) < 0.25;
+          const landCover = isUrban ? 'built_up' : isWesternGhats ? 'tree_cover' : 'cropland';
           await query(
-            `UPDATE district_hexes
-             SET slope_deg = $1, twi = $2, drainage_proxy = $3, water_holding_capacity = $4, land_cover = $5, is_cropland = $6
-             WHERE h3_index = $7`,
-            [slopeDeg, twi, drainageProxy, waterHoldingCapacity, landCover, isCropland, row.h3_index]
+            `UPDATE district_hexes SET slope_deg=$1, twi=$2, drainage_proxy=$3, water_holding_capacity=$4, land_cover=$5, is_cropland=$6 WHERE h3_index=$7`,
+            [slopeDeg, twi, drainageProxy, waterHoldingCapacity, landCover, landCover === 'cropland', row.h3_index]
           );
         }
         await query('COMMIT');
@@ -92,7 +78,7 @@ export class StaticInputsService {
 
       this.lastComputedAt = new Date();
       this.isProcessing = false;
-      console.log(`[+] Static terrain and soil inputs successfully cached for ${uncomputed.rows.length} hexes.`);
+      console.log(`[+] Static terrain and soil inputs cached for ${uncomputed.rows.length} hexes.`);
       return { updatedCount: uncomputed.rows.length };
     } catch (err: any) {
       this.isProcessing = false;

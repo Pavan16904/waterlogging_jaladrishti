@@ -33,10 +33,15 @@ async function startServer() {
   try {
     await initializeDatabase();
     await seedDatabase();
-    await pipelineScheduler.start();
-    
+
+    // Start listening immediately so /api/status responds right away
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`[+] Node.js Backend Gateway running on http://127.0.0.1:${PORT}`);
+    });
+
+    // Pipeline startup is background work — don't block the server
+    pipelineScheduler.start().catch((err: any) => {
+      console.error('[-] Pipeline scheduler startup error:', err.message);
     });
   } catch (err: any) {
     console.error('[-] Failed to start server:', err.message);

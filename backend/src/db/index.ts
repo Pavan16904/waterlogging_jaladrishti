@@ -45,7 +45,13 @@ export function getSqliteDb(): any {
     }
     const dbPath = path.join(dataDir, 'waterlogging.sqlite');
     sqliteDb = new DatabaseSync(dbPath);
-    sqliteDb.exec('PRAGMA foreign_keys = ON;');
+    try {
+      sqliteDb.exec('PRAGMA journal_mode = WAL;');
+      sqliteDb.exec('PRAGMA busy_timeout = 10000;');
+      sqliteDb.exec('PRAGMA foreign_keys = ON;');
+    } catch (err: any) {
+      console.warn('SQLite pragma setup warning:', err.message);
+    }
     initSqliteSchema(sqliteDb);
   }
   return sqliteDb;
@@ -68,6 +74,15 @@ export function initSqliteSchema(db: any) {
   } catch {}
   try {
     db.exec('ALTER TABLE incidents ADD COLUMN image_url TEXT;');
+  } catch {}
+  try {
+    db.exec("ALTER TABLE incidents ADD COLUMN event_type TEXT DEFAULT 'Road waterlogging';");
+  } catch {}
+  try {
+    db.exec('ALTER TABLE incidents ADD COLUMN drainage_asset_id TEXT;');
+  } catch {}
+  try {
+    db.exec("ALTER TABLE incidents ADD COLUMN source_type TEXT DEFAULT 'FIELD_SURVEY';");
   } catch {}
 
   db.exec(`
@@ -307,6 +322,49 @@ export function initSqliteSchema(db: any) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_sensor_readings_device_ts ON sensor_readings (device_id, ts);
+
+    CREATE TABLE IF NOT EXISTS drainage_lines (
+      id TEXT PRIMARY KEY,
+      district_id TEXT NOT NULL,
+      drain_name TEXT,
+      drain_type TEXT NOT NULL DEFAULT 'Unknown',
+      geometry_geojson TEXT NOT NULL,
+      source_url TEXT NOT NULL,
+      source_dataset TEXT NOT NULL,
+      source_org TEXT NOT NULL DEFAULT 'OpenCity.in / Government of Karnataka',
+      source_license TEXT NOT NULL DEFAULT 'Public Domain',
+      dataset_date TEXT,
+      kml_name TEXT,
+      kml_description TEXT,
+      length_km REAL,
+      import_batch TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_dl_district ON drainage_lines (district_id);
+
+    CREATE TABLE IF NOT EXISTS drain_condition_reports (
+      id TEXT PRIMARY KEY,
+      drain_id TEXT REFERENCES drainage_lines(id) ON DELETE CASCADE,
+      district_id TEXT NOT NULL,
+      condition_status TEXT NOT NULL DEFAULT 'unknown_inspection_needed',
+      is_verified INTEGER NOT NULL DEFAULT 0,
+      reporter_name TEXT,
+      reporter_type TEXT NOT NULL DEFAULT 'citizen',
+      report_notes TEXT,
+      inspection_notes TEXT,
+      inspector_name TEXT,
+      photo_url TEXT,
+      lat REAL,
+      lng REAL,
+      reported_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      verified_at TEXT,
+      resolved_at TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_dcr_drain ON drain_condition_reports (drain_id);
+    CREATE INDEX IF NOT EXISTS idx_dcr_district ON drain_condition_reports (district_id);
+    CREATE INDEX IF NOT EXISTS idx_dcr_status ON drain_condition_reports (condition_status);
   `);
 
   try {
@@ -361,11 +419,22 @@ export async function query(text: string, params?: any[]): Promise<{ rows: any[]
   if (/^TRUNCATE\s+TABLE/i.test(sql)) {
     const tablePart = sql.replace(/^TRUNCATE\s+TABLE\s+/i, '').replace(/CASCADE\s*;?$/i, '').trim();
     const tables = tablePart.split(',').map(t => t.trim().replace(/;$/, ''));
-    db.exec('PRAGMA foreign_keys = OFF;');
-    for (const table of tables) {
-      if (table) db.exec(`DELETE FROM ${table};`);
+    try {
+      db.exec('PRAGMA busy_timeout = 15000;');
+      db.exec('PRAGMA foreign_keys = OFF;');
+      for (const table of tables) {
+        if (table) {
+          try {
+            db.exec(`DELETE FROM ${table};`);
+          } catch (delErr: any) {
+            console.warn(`[!] Truncate warning on ${table}:`, delErr.message);
+          }
+        }
+      }
+      db.exec('PRAGMA foreign_keys = ON;');
+    } catch (err: any) {
+      console.warn('Truncate error:', err.message);
     }
-    db.exec('PRAGMA foreign_keys = ON;');
     return { rows: [], rowCount: 0 };
   }
 
@@ -384,18 +453,24 @@ export async function query(text: string, params?: any[]): Promise<{ rows: any[]
   // Replace PostgreSQL positional parameters ($1, $2, ...) with ?
   sql = sql.replace(/\$[0-9]+/g, '?');
 
+  let stmt = statementCache.get(sql);
+  if (!stmt) {
+    stmt = db.prepare(sql);
+    statementCache.set(sql, stmt);
+  }
+
   const isSelect = /^\s*SELECT/i.test(sql);
   if (isSelect) {
-    const stmt = db.prepare(sql);
     const rawRows = stmt.all(...safeParams);
     const rows = rawRows.map(processSqliteRow);
     return { rows, rowCount: rows.length };
   } else {
-    const stmt = db.prepare(sql);
     const result = stmt.run(...safeParams);
     return { rows: [], rowCount: Number(result.changes || 0) };
   }
 }
+
+const statementCache = new Map<string, any>();
 
 export async function initializeDatabase() {
   try {

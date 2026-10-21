@@ -136,7 +136,7 @@ export const ProjectOverviewPage: React.FC<ProjectOverviewPageProps> = ({
   onNavigateToFloodMap,
   onNavigateToWeather,
   onNavigateToDrainage,
-  selectedDistrict = 'Ballari',
+  selectedDistrict = 'Bengaluru Urban',
   scoresKey = 0,
   pollKey = 0,
 }) => {

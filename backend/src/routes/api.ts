@@ -24,6 +24,15 @@ import { getCropWaterAdvice } from '../controllers/cropAdviceController.js';
 import { getDrainageActions } from '../controllers/drainageActionsController.js';
 import { streamEvents } from '../controllers/sseController.js';
 import { getIncidents, createIncident, updateIncidentStatus } from '../controllers/incidentController.js';
+import { 
+  getDrainageLines, 
+  getDrainConditionHistory, 
+  submitDrainConditionReport, 
+  getDrainageImportStatus,
+  getDrainageSummary,
+  getDrainageAssets,
+  postImportDistrictDrainage
+} from '../controllers/drainageLinesController.js';
 
 const router = Router();
 
@@ -43,6 +52,14 @@ router.get('/status', getDataPipelineStatus);
 router.get('/weather/district/:id', getWeatherByDistrictId);
 router.get('/crop/advice', getCropWaterAdvice);
 router.get('/drainage/actions', getDrainageActions);
+// Real drainage network geometry (OpenCity.in KML import)
+router.get('/drainage/lines', getDrainageLines);
+router.get('/drainage/import-status', getDrainageImportStatus);
+router.get('/drainage/summary', getDrainageSummary);
+router.get('/drainage/assets', getDrainageAssets);
+router.post('/drainage/import/:districtId', postImportDistrictDrainage);
+router.get('/drainage/lines/:id/conditions', getDrainConditionHistory);
+router.post('/drainage/lines/:id/conditions', submitDrainConditionReport);
 router.post('/pipeline/ingest', triggerForecastIngestion);
 router.post('/satellite/flood-check/:districtId', triggerSatelliteFloodCheck);
 

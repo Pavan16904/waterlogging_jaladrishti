@@ -125,6 +125,25 @@ export const api = {
     return res.data;
   },
 
+  // District-specific waterlogging incidents for advisory evidence
+  getDistrictIncidents: async (districtId: string): Promise<{ incidents: any[]; count: number }> => {
+    const res = await axios.get(`${API_BASE}/incidents?district_id=${encodeURIComponent(districtId)}&limit=20`);
+    return res.data;
+  },
+
+  // District-specific drainage infrastructure summary from database
+  getDrainageSummary: async (districtId: string): Promise<any> => {
+    const res = await axios.get(`${API_BASE}/drainage/summary?district_id=${encodeURIComponent(districtId)}`);
+    return res.data;
+  },
+
+  // District-specific drainage assets from database
+  getDrainageAssets: async (districtId: string, limit = 25): Promise<any> => {
+    const res = await axios.get(`${API_BASE}/drainage/assets?district_id=${encodeURIComponent(districtId)}&limit=${limit}`);
+    return res.data;
+  },
+
+
   getIoTSensors: async (districtId?: string): Promise<{ summary: any; sensors: any[] }> => {
     const res = await axios.get(`${API_BASE}/realtime/iot-sensors${districtId ? `?districtId=${encodeURIComponent(districtId)}` : ''}`);
     return res.data;
@@ -238,10 +257,28 @@ export const api = {
     return res.data;
   },
 
-  // Genuine Waterlogging Incidents & Persistent Citizen Reports
-  getIncidents: async (params?: { district_id?: string }): Promise<any> => {
-    const q = params?.district_id ? `?district_id=${encodeURIComponent(params.district_id)}` : '';
-    const res = await axios.get(`${API_BASE}/incidents${q}`);
+  // Genuine Waterlogging Incidents & Shared Drainage Repository
+  getIncidents: async (params?: {
+    district_id?: string;
+    severity?: string;
+    event_type?: string;
+    status?: string;
+    include_rejected?: boolean;
+    has_coords?: boolean;
+    date_from?: string;
+    date_to?: string;
+  }): Promise<any> => {
+    const q = new URLSearchParams();
+    if (params?.district_id) q.set('district_id', params.district_id);
+    if (params?.severity && params.severity !== 'ALL') q.set('severity', params.severity);
+    if (params?.event_type && params.event_type !== 'ALL') q.set('event_type', params.event_type);
+    if (params?.status && params.status !== 'ALL') q.set('status', params.status);
+    if (params?.include_rejected) q.set('include_rejected', 'true');
+    if (params?.has_coords !== undefined) q.set('has_coords', String(params.has_coords));
+    if (params?.date_from) q.set('date_from', params.date_from);
+    if (params?.date_to) q.set('date_to', params.date_to);
+    const queryStr = q.toString() ? `?${q.toString()}` : '';
+    const res = await axios.get(`${API_BASE}/incidents${queryStr}`);
     return res.data;
   },
 
@@ -259,6 +296,17 @@ export const api = {
   getOperaFloodObservations: async (districtId?: string): Promise<any> => {
     const q = districtId ? `?district_id=${encodeURIComponent(districtId)}` : '';
     const res = await axios.get(`${API_BASE}/satellite/opera-dswx${q}`);
+    return res.data;
+  },
+
+  importDrainageDistrict: async (districtId: string): Promise<any> => {
+    const res = await axios.post(`${API_BASE}/drainage/import/${encodeURIComponent(districtId)}`);
+    return res.data;
+  },
+
+  getDrainageLines: async (districtId: string, type?: string): Promise<any> => {
+    const q = type ? `&type=${encodeURIComponent(type)}` : '';
+    const res = await axios.get(`${API_BASE}/drainage/lines?district_id=${encodeURIComponent(districtId)}${q}`);
     return res.data;
   }
 };

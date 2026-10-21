@@ -3,6 +3,7 @@ import axios from 'axios';
 import { KARNATAKA_DISTRICTS_GEO } from './weatherController.js';
 import { cacheService, CACHE_CONFIG } from '../services/cacheService.js';
 import { query } from '../db/index.js';
+import { canonicalDistrictId, getDistrictGeoKey } from '../utils/districtUtils.js';
 
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://127.0.0.1:8000';
 
@@ -1049,22 +1050,72 @@ export async function getLiveDrainageAdvisory(req: Request, res: Response) {
   try {
     const { districtId } = req.params;
     const forceRefresh = req.query.refresh === 'true';
-    const rawDistrict = (districtId || 'bengaluru_urban').replace(/_/g, ' ');
+    // Normalize the district ID consistently from the URL param
+    const normalizedId = canonicalDistrictId(districtId || 'bengaluru_urban');
+    const matchKey = getDistrictGeoKey(normalizedId);
 
-    const matchKey = Object.keys(KARNATAKA_DISTRICTS_GEO).find(
-      k => k.toLowerCase().includes(rawDistrict.toLowerCase()) || rawDistrict.toLowerCase().includes(k.toLowerCase())
-    ) || 'Bengaluru Urban';
-
-    const geo = KARNATAKA_DISTRICTS_GEO[matchKey];
+    const geo = KARNATAKA_DISTRICTS_GEO[matchKey] || KARNATAKA_DISTRICTS_GEO['Bengaluru Urban'];
     const lat = geo.lat;
     const lng = geo.lng;
-    const cacheKey = `drainage_advisory_${matchKey}`;
+    // Cache key uses the normalized districtId so each district has its own slot
+    const cacheKey = `drainage_advisory_v2_${normalizedId}`;
+
+    // Fetch district-specific incidents from DB (outside cache so always fresh)
+    let districtIncidentSummary = { severeCount: 0, highCount: 0, totalActive: 0 };
+    try {
+      const incResult = await query(
+        `SELECT severity, COUNT(*) as n FROM incidents
+         WHERE LOWER(district_id) = $1 AND status != 'REJECTED'
+         GROUP BY severity`,
+        [normalizedId]
+      );
+      incResult.rows.forEach((r: any) => {
+        districtIncidentSummary.totalActive += Number(r.n);
+        if (r.severity === 'Severe') districtIncidentSummary.severeCount += Number(r.n);
+        if (r.severity === 'High') districtIncidentSummary.highCount += Number(r.n);
+      });
+    } catch { /* proceed with weather only */ }
+
+    // Fetch district-specific drainage line statistics from DB
+    let districtDrainageSummary = { totalLines: 0, totalLengthKm: 0, source: 'None' };
+    try {
+      const dlResult = await query(
+        `SELECT COUNT(*) as c, COALESCE(SUM(length_km), 0) as km, source_dataset
+         FROM drainage_lines
+         WHERE district_id = $1
+         GROUP BY source_dataset`,
+        [normalizedId]
+      );
+      if (dlResult.rows.length > 0) {
+        districtDrainageSummary.totalLines = dlResult.rows.reduce((sum: number, r: any) => sum + Number(r.c), 0);
+        districtDrainageSummary.totalLengthKm = Math.round(dlResult.rows.reduce((sum: number, r: any) => sum + Number(r.km), 0) * 10) / 10;
+        districtDrainageSummary.source = dlResult.rows[0].source_dataset || 'OpenCity.in / Government of Karnataka';
+      }
+    } catch { /* proceed */ }
+
+    // Fetch district-specific pipeline condition reports from DB
+    let pipelineSummary = { totalReports: 0, verifiedBlockages: 0, reportedBlockages: 0 };
+    try {
+      const pResult = await query(
+        `SELECT condition_status, is_verified, COUNT(*) as c
+         FROM drain_condition_reports
+         WHERE district_id = $1
+         GROUP BY condition_status, is_verified`,
+        [normalizedId]
+      );
+      pResult.rows.forEach((r: any) => {
+        const count = Number(r.c);
+        pipelineSummary.totalReports += count;
+        if (r.condition_status === 'verified_blockage') pipelineSummary.verifiedBlockages += count;
+        if (r.condition_status === 'reported_blockage') pipelineSummary.reportedBlockages += count;
+      });
+    } catch { /* proceed */ }
 
     const cachedResult = await cacheService.fetchWithCache(
       cacheKey,
       CACHE_CONFIG.ADVISORY_TTL_MS,
       async () => {
-        // Fetch current precipitation and 2-day forecast
+        // Fetch current precipitation and 2-day forecast for THIS district's coordinates
         let url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}` +
           `&current=precipitation,rain,temperature_2m,relative_humidity_2m` +
           `&daily=precipitation_sum&hourly=precipitation` +
@@ -1120,43 +1171,83 @@ export async function getLiveDrainageAdvisory(req: Request, res: Response) {
         const modeledDailyPrecipitationMm: number = dailyValues[dailyIndex];
         const backendRetrievedAt = new Date().toISOString();
 
-        // Derive guidance category
+        // Ground-truth indicators
+        const hasDrainageData = districtDrainageSummary.totalLines > 0;
+        const incSummary = districtIncidentSummary;
+        const hasSevereIncidents = incSummary.severeCount > 0;
+        const hasHighIncidents = incSummary.highCount > 0;
+        const hasPipelineBlockages = pipelineSummary.verifiedBlockages > 0;
+
+        // Data insufficiency specifically means no GIS lines exist for this district
+        const isDataInsufficient = !hasDrainageData;
+
         let riskCategory = 'Normal Baseline';
         let riskColor = '#10b981';
         let priority = 'Priority 3 (Routine Maintenance)';
-        let guidanceHeadline = 'Normal Drainage Operation · Weather-Based Guidance';
-        let diagnosis = `Open-Meteo model output: ${next24hPrecipMm.toFixed(1)} mm precipitation forecast in the next 24 hours; no verified local drainage incidents or infrastructure status are available.`;
-        let recommendation = 'Use this forecast as situational context only; verify local conditions through authorized field channels.';
+        let guidanceHeadline = `Normal Drainage Operation · ${matchKey}`;
+        let diagnosis = `Open-Meteo forecast for ${matchKey}: ${next24hPrecipMm.toFixed(1)} mm in next 24 h.` +
+          (hasDrainageData ? ` Mapped network: ${districtDrainageSummary.totalLines} drain assets (${districtDrainageSummary.totalLengthKm} km).` : ' Physical drain GIS lines unmonitored.') +
+          (incSummary.totalActive > 0 ? ` ${incSummary.totalActive} active incident(s) recorded in DB.` : ` No active waterlogging incidents.`);
+        let recommendation = `Regular drainage maintenance for ${matchKey}. No elevated meteorological threat.`;
 
-        if (next24hPrecipMm >= 60 || peakHourlyMm >= 25) {
+        // Classification: Keep confirmed pipeline blockages separate from estimated rainfall-driven risk
+        if (hasPipelineBlockages) {
+          // Confirmed physical blockage takes operational priority regardless of dry weather
+          riskCategory = 'Confirmed Pipeline Blockage Alert';
+          riskColor = '#dc2626';
+          priority = 'Priority 1 (Critical Blockage Dispatch)';
+          guidanceHeadline = `Confirmed Drain Blockage · Immediate Clearance · ${matchKey}`;
+          diagnosis = `${pipelineSummary.verifiedBlockages} verified physical pipeline blockage(s) recorded for ${matchKey}. Immediate civil desiltation required. (Forecast rain: ${next24hPrecipMm.toFixed(1)} mm / 24 h).`;
+          recommendation = `Dispatch emergency desilting crew with suction/jetting machine to unblock confirmed drainage asset.`;
+        } else if (next24hPrecipMm >= 60 || peakHourlyMm >= 25) {
           riskCategory = 'Severe Inundation Precaution';
           riskColor = '#ef4444';
           priority = 'Priority 1 (Critical Civil Precaution)';
-          guidanceHeadline = 'Heavy Rainfall Runoff Alert · Weather-Based Guidance';
-          diagnosis = `Open-Meteo model forecasts ${next24hPrecipMm.toFixed(1)} mm in 24 hours with a peak hourly value of ${peakHourlyMm.toFixed(1)} mm. No local flood observation or infrastructure status is available.`;
-          recommendation = 'Verify local rainfall and drainage conditions through authorized field channels and follow official advisories.';
+          guidanceHeadline = `Heavy Rainfall Runoff Alert · ${matchKey}`;
+          diagnosis = `Open-Meteo model for ${matchKey}: ${next24hPrecipMm.toFixed(1)} mm / 24 h, peak ${peakHourlyMm.toFixed(1)} mm/h.` +
+            (hasDrainageData ? ` Risk across ${districtDrainageSummary.totalLines} mapped drain channels.` : '') +
+            (hasSevereIncidents ? ` ${incSummary.severeCount} severe incident(s) on record.` : '');
+          recommendation = `Deploy rapid response teams at ${matchKey} flash-flood choke points. Inspect outfall points and clear culvert screens.`;
         } else if (next24hPrecipMm >= 25 || peakHourlyMm >= 10) {
           riskCategory = 'Moderate Runoff Watch';
           riskColor = '#f59e0b';
           priority = 'Priority 2 (High Attention)';
-          guidanceHeadline = 'Moderate Runoff Watch · Weather-Based Guidance';
-          diagnosis = `Open-Meteo model forecasts ${next24hPrecipMm.toFixed(1)} mm in 24 hours with a peak hourly value of ${peakHourlyMm.toFixed(1)} mm. This is not a report of observed ponding or blocked drains.`;
-          recommendation = 'Monitor official local advisories and verify field conditions before taking action.';
-        } else if (next24hPrecipMm >= 10) {
+          guidanceHeadline = `Moderate Runoff Watch · ${matchKey}`;
+          diagnosis = `Open-Meteo model for ${matchKey}: ${next24hPrecipMm.toFixed(1)} mm / 24 h, peak ${peakHourlyMm.toFixed(1)} mm/h.` +
+            (hasHighIncidents ? ` ${incSummary.highCount} high-severity waterlogging incident(s) on record.` : '');
+          recommendation = `Monitor ${matchKey} drainage network and official advisories. Pre-position pumps at known flood choke points.`;
+        } else if (hasSevereIncidents) {
+          // Low rainfall but verified severe incident on ground
+          riskCategory = 'Localized Standing Water Precaution';
+          riskColor = '#f97316';
+          priority = 'Priority 2 (Targeted Clearance)';
+          guidanceHeadline = `Localized Choke Point Attention · ${matchKey}`;
+          diagnosis = `Low forecast rain (${next24hPrecipMm.toFixed(1)} mm / 24 h) in ${matchKey}, but ${incSummary.severeCount} severe incident(s) exist on record.`;
+          recommendation = `Targeted desiltation required at reported choke points in ${matchKey}. Do not rely on natural percolation.`;
+        } else if (next24hPrecipMm >= 8) {
           riskCategory = 'Minor Runoff Watch';
           riskColor = '#eab308';
           priority = 'Priority 2 (Standard Watch)';
-          guidanceHeadline = 'Light to Moderate Precipitation · Weather-Based Guidance';
-          diagnosis = `Open-Meteo model forecasts ${next24hPrecipMm.toFixed(1)} mm precipitation in the next 24 hours. No ground observation or local infrastructure report is connected.`;
-          recommendation = 'Consult official local advisories and field reports for site-specific decisions.';
+          guidanceHeadline = `Light to Moderate Rain · ${matchKey}`;
+          diagnosis = `Open-Meteo model for ${matchKey}: ${next24hPrecipMm.toFixed(1)} mm / 24 h. Infiltration expected to handle majority of runoff.`;
+          recommendation = `Inspect surface grates and drain inlets in ${matchKey} ahead of expected shower bands.`;
+        } else if (isDataInsufficient) {
+          // Missing data must not automatically mean Low Risk or Functional
+          riskCategory = 'Unmonitored Baseline (Insufficient Infrastructure Data)';
+          riskColor = '#64748b';
+          priority = 'Standard Baseline (Unmonitored)';
+          guidanceHeadline = `Weather Normal · Unmonitored Drain Network · ${matchKey}`;
+          diagnosis = `Open-Meteo forecast: ${next24hPrecipMm.toFixed(1)} mm / 24 h. Notice: No government-verified stormwater drain network (KML) currently imported into local repository for ${matchKey}. Physical drainage state is unmonitored, not confirmed functional.`;
+          recommendation = `Ground survey and GIS drain mapping needed for ${matchKey}. Use on-demand import if OpenCity KML dataset is desired.`;
         }
 
         const advisoryRecord = {
-          id: `adv_weather_${matchKey.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+          id: `adv_weather_${normalizedId}`,
           district: matchKey,
+          districtId: normalizedId,
           districtName: matchKey,
-          zone_name: `${matchKey} district centroid`,
-          guidanceType: 'Weather-Based Drainage Guidance',
+          zone_name: `${matchKey} centroid reach`,
+          guidanceType: 'Weather + Infrastructure Evidence Advisory',
           guidanceLevel: riskCategory,
           riskCategory,
           riskColor,
@@ -1165,9 +1256,28 @@ export async function getLiveDrainageAdvisory(req: Request, res: Response) {
           diagnosis,
           action_recommendation: recommendation,
           recommendedAction: recommendation,
-          coordinates: {
-            latitude: lat,
-            longitude: lng,
+          coordinates: { latitude: lat, longitude: lng },
+          is_district_specific: true,
+          insufficient_data: isDataInsufficient,
+          insufficientDataReason: isDataInsufficient
+            ? `No government-verified stormwater drain network (KML) currently imported into local repository for ${matchKey}. OpenCity.in dataset resource exists for on-demand import.`
+            : undefined,
+          drainageEvidence: hasDrainageData ? {
+            totalLines: districtDrainageSummary.totalLines,
+            totalLengthKm: districtDrainageSummary.totalLengthKm,
+            source: districtDrainageSummary.source,
+            license: 'Public Domain'
+          } : null,
+          pipelineEvidence: {
+            conditionReportsTotal: pipelineSummary.totalReports,
+            verifiedBlockages: pipelineSummary.verifiedBlockages,
+            reportedBlockages: pipelineSummary.reportedBlockages
+          },
+          incidentEvidence: {
+            totalActive: incSummary.totalActive,
+            severeCount: incSummary.severeCount,
+            highCount: incSummary.highCount,
+            source: 'JalaDrishti SQLite incidents table',
           },
           metrics: {
             provider: 'Open-Meteo European NWP / ECMWF',
@@ -1188,7 +1298,7 @@ export async function getLiveDrainageAdvisory(req: Request, res: Response) {
           dataTimestamp: modelValidTime,
           backendRetrievedAt,
           advisoryTimestamp: new Date().toISOString(),
-          disclaimer: 'Weather-based model guidance only. Daily precipitation is modeled output, not a ground observation. No verified drainage incidents, work orders, or dispatch feeds are connected.'
+          disclaimer: 'Drainage network from OpenCity.in/BBMP. Weather guidance from NWP model output. Incidents from ground surveys.'
         };
 
         return advisoryRecord;

@@ -30,19 +30,44 @@ export const EmergencyOpsModal: React.FC<EmergencyOpsModalProps> = ({
   onRefreshAlerts,
 }) => {
   const [districtFilter, setDistrictFilter] = useState<string>(selectedDistrict || 'ALL');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [resolutionMessage, setResolutionMessage] = useState<string | null>(null);
 
-  // Filter alerts by selected district or show all
+  // Distinct districts actually having incidents in the store
+  const districtsWithIncidents = useMemo(() => {
+    const s = new Set<string>();
+    alerts.forEach((a) => {
+      if (a.districtId) s.add(a.districtId.toLowerCase().trim());
+      else if (a.district) s.add(a.district.toLowerCase().trim());
+    });
+    return s.size;
+  }, [alerts]);
+
+  // Filter alerts by selected district and status
   const filteredAlerts = useMemo(() => {
-    if (!districtFilter || districtFilter === 'ALL') return alerts;
-    const q = districtFilter.toLowerCase().trim();
-    return alerts.filter(
-      (a) =>
-        (a.districtId && a.districtId.toLowerCase().includes(q)) ||
-        (a.district && a.district.toLowerCase().includes(q))
-    );
-  }, [alerts, districtFilter]);
+    return alerts.filter((a) => {
+      // 1. District filter
+      if (districtFilter && districtFilter !== 'ALL') {
+        const q = districtFilter.toLowerCase().trim();
+        const matchesDist =
+          (a.districtId && a.districtId.toLowerCase().includes(q)) ||
+          (a.district && a.district.toLowerCase().includes(q));
+        if (!matchesDist) return false;
+      }
+
+      // 2. Status filter
+      if (statusFilter !== 'ALL') {
+        const st = (a.status || 'SUBMITTED_UNVERIFIED').toUpperCase();
+        if (statusFilter === 'VERIFIED' && st !== 'VERIFIED') return false;
+        if (statusFilter === 'PENDING' && st !== 'SUBMITTED_UNVERIFIED' && st !== 'PENDING') return false;
+        if (statusFilter === 'IN_PROGRESS' && st !== 'IN_PROGRESS') return false;
+        if (statusFilter === 'RESOLVED' && st !== 'RESOLVED') return false;
+      }
+
+      return true;
+    });
+  }, [alerts, districtFilter, statusFilter]);
 
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
 
@@ -92,13 +117,31 @@ export const EmergencyOpsModal: React.FC<EmergencyOpsModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Authoritative waterlogging observation queue across all 31 Karnataka districts. Automated telemetric CAD dispatch is not connected.
+                All 31 Karnataka districts available in registry • <strong>{districtsWithIncidents}</strong> districts currently have active field/SOS records ({alerts.length} total incidents).
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* District Filter Dropdown */}
+            {/* Status Filter */}
+            <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs">
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setSelectedAlertId(null);
+                }}
+                className="bg-transparent font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="VERIFIED">Verified Only</option>
+                <option value="PENDING">Pending Verification</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="RESOLVED">Resolved</option>
+              </select>
+            </div>
+
+            {/* District Filter Dropdown with 31 Official Districts */}
             <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs">
               <Filter className="w-3.5 h-3.5 text-slate-400" />
               <select
@@ -109,12 +152,19 @@ export const EmergencyOpsModal: React.FC<EmergencyOpsModalProps> = ({
                 }}
                 className="bg-transparent font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer"
               >
-                <option value="ALL">All Karnataka Districts ({alerts.length})</option>
-                {KARNATAKA_31_DISTRICTS_WEATHER.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.displayName}
-                  </option>
-                ))}
+                <option value="ALL">All 31 Districts ({alerts.length} Incidents)</option>
+                {KARNATAKA_31_DISTRICTS_WEATHER.map((d) => {
+                  const q = d.id.toLowerCase();
+                  const count = alerts.filter(
+                    (a) => (a.districtId && a.districtId.toLowerCase().includes(q)) ||
+                           (a.district && a.district.toLowerCase().includes(q))
+                  ).length;
+                  return (
+                    <option key={d.id} value={d.id}>
+                      {d.displayName} ({count})
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
@@ -135,7 +185,7 @@ export const EmergencyOpsModal: React.FC<EmergencyOpsModalProps> = ({
             <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
               <span>Incident Queue ({filteredAlerts.length})</span>
               <span className="text-emerald-600 dark:text-emerald-400 font-mono text-[11px]">
-                Authoritative DB
+                {districtsWithIncidents} Districts Represented
               </span>
             </div>
 
@@ -194,8 +244,16 @@ export const EmergencyOpsModal: React.FC<EmergencyOpsModalProps> = ({
                           <MapPin className="w-3 h-3 text-[#1d6fd8] shrink-0" />
                           <span>{alert.district}</span>
                         </div>
-                        <span className="font-mono text-[9px] px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                          {alert.status || 'LOGGED'}
+                        <span className={`font-mono text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          alert.status === 'VERIFIED'
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-500/30'
+                            : alert.status === 'RESOLVED'
+                            ? 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                            : alert.status === 'IN_PROGRESS'
+                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border border-blue-500/30'
+                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-500/30'
+                        }`}>
+                          {alert.status === 'VERIFIED' ? '✓ VERIFIED' : alert.status === 'RESOLVED' ? 'RESOLVED' : alert.status === 'IN_PROGRESS' ? 'IN PROGRESS' : 'PENDING CHECK'}
                         </span>
                       </div>
                     </button>

@@ -56,14 +56,14 @@ import {
   YAxis,
 } from 'recharts';
 import { api } from '../services/api';
-import { KARNATAKA_31_DISTRICTS_WEATHER, WeatherDistrict } from '../data/karnatakaDistrictsWeather';
+import { KARNATAKA_31_DISTRICTS_WEATHER, WeatherDistrict, canonicalDistrictId } from '../data/karnatakaDistrictsWeather';
 
 if (typeof window !== 'undefined' && (maplibregl as any).setWorkerUrl) {
   (maplibregl as any).setWorkerUrl(workerUrl);
 }
 
 export type SeverityLevel = 'Severe' | 'High' | 'Moderate' | 'Minor';
-export type IncidentStatus = 'Unresolved' | 'In Progress' | 'Verified' | 'Resolved';
+export type IncidentStatus = 'Unresolved' | 'In Progress' | 'Verified' | 'Resolved' | 'Historical' | 'Rejected';
 
 export interface FloodIncident {
   id: string;
@@ -71,8 +71,9 @@ export interface FloodIncident {
   location: string;
   landmark: string;
   districtId: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
+  hasCoords: boolean;
   severity: SeverityLevel;
   waterDepthFt: number;
   waterDepthText: string;
@@ -84,6 +85,9 @@ export interface FloodIncident {
   observationType: 'Verified Field Observation' | 'Geotagged Citizen SOS' | 'IoT Water-Level Alert';
   imageThumb?: string;
   drainageActionId?: string;
+  drainageAssetId?: string;
+  eventType?: string;
+  sourceType?: string;
   affectedRoad?: string;
   description?: string;
 }
@@ -347,7 +351,7 @@ const BALLARI_WATER_LEVELS: WaterLevelStation[] = [
 ];
 
 export function FloodMapPage({
-  selectedDistrict = 'Ballari',
+  selectedDistrict = 'Bengaluru Urban',
   onDistrictChange,
   scoresKey = 0,
   selectedDate,
@@ -365,6 +369,8 @@ export function FloodMapPage({
     const normalized = selectedDistrict.toLowerCase().trim().replace(/[\s-]+/g, '_');
     return KARNATAKA_31_DISTRICTS_WEATHER.find((d) =>
       d.id === normalized ||
+      (d.id === 'davanagere' && normalized === 'davangere') ||
+      (d.id === 'davangere' && normalized === 'davanagere') ||
       d.displayName.toLowerCase().replace(/[\s-]+/g, '_') === normalized ||
       d.name.toLowerCase().replace(/[\s-]+/g, '_') === normalized
     ) || KARNATAKA_31_DISTRICTS_WEATHER[0];
@@ -442,7 +448,6 @@ export function FloodMapPage({
   const [overlayLiveIncidents, setOverlayLiveIncidents] = useState(true);
   const [overlayFloodedRoads, setOverlayFloodedRoads] = useState(true);
   const [overlayFloodRiskZones, setOverlayFloodRiskZones] = useState(false);
-  const [overlayRainfallRadar, setOverlayRainfallRadar] = useState(false);
   const [overlayWaterLevels, setOverlayWaterLevels] = useState(true);
 
   // Selected incident for popup details
@@ -450,7 +455,6 @@ export function FloodMapPage({
 
   // Telemetry, Hexes, and Weather Data
   const [weatherData, setWeatherData] = useState<any>(null);
-  const [radarMeta, setRadarMeta] = useState<any>(null);
   const [modelHexScores, setModelHexScores] = useState<any[]>([]);
 
   // Fetch real Open-Meteo weather
@@ -463,17 +467,6 @@ export function FloodMapPage({
       .catch((err) => console.warn('Weather fetch error:', err));
     return () => { mounted = false; };
   }, [activeDistrict.id, scoresKey]);
-
-  // Fetch live Doppler Radar metadata (RainViewer)
-  useEffect(() => {
-    let mounted = true;
-    api.getRadarMeta()
-      .then((res) => {
-        if (mounted && res?.host) setRadarMeta(res);
-      })
-      .catch((err) => console.warn('Radar metadata fetch error:', err));
-    return () => { mounted = false; };
-  }, []);
 
   // Fetch Modelled H3 Risk Hexes for Flood Risk Overlay
   useEffect(() => {
@@ -488,56 +481,110 @@ export function FloodMapPage({
     return () => { mounted = false; };
   }, [activeDistrict.id, scoresKey]);
 
-  // Fetch genuine georeferenced incidents from backend for selected district (No fake markers)
+  // Comprehensive synchronized filters state (Requirement 5)
+  const [filterSeverity, setFilterSeverity] = useState<string>('ALL');
+  const [filterEventType, setFilterEventType] = useState<string>('ALL');
+  const [filterStatus, setFilterStatus] = useState<string>('ACTIVE'); // ACTIVE | ALL | VERIFIED | SUBMITTED_UNVERIFIED | HISTORICAL | REJECTED
+
+  const hasActiveFilters = useMemo(() => {
+    return filterSeverity !== 'ALL' || filterEventType !== 'ALL' || filterStatus !== 'ACTIVE' || searchQuery.trim().length > 0;
+  }, [filterSeverity, filterEventType, filterStatus, searchQuery]);
+
+  const resetFilters = useCallback(() => {
+    setFilterSeverity('ALL');
+    setFilterEventType('ALL');
+    setFilterStatus('ACTIVE');
+    setSearchQuery('');
+  }, []);
+
+  const [isStaleIncidents, setIsStaleIncidents] = useState<boolean>(false);
+
+  // Fetch genuine incidents from backend across all Karnataka districts (including unmapped & historical)
   useEffect(() => {
     let mounted = true;
-    setIncidentsLoading(true);
-    api.getIncidents({ district_id: activeDistrict.id })
-      .then((res) => {
-        if (!mounted) return;
-        if (res?.success && Array.isArray(res.incidents)) {
-          const mapped: FloodIncident[] = res.incidents
-            .filter((item: any) => typeof item.lat === 'number' && typeof item.lng === 'number' && !isNaN(item.lat) && !isNaN(item.lng))
-            .map((item: any) => ({
-              id: item.id,
-              name: item.landmark || `Incident ${item.id}`,
-              location: item.landmark,
-              landmark: item.landmark,
-              districtId: item.district_id,
-              lat: item.lat,
-              lng: item.lng,
-              severity: (['Severe', 'High', 'Moderate', 'Minor'].includes(item.severity) ? item.severity : 'Moderate') as SeverityLevel,
-              waterDepthFt: item.water_depth === 'submerged' ? 4.0 : item.water_depth === 'waist' ? 2.5 : item.water_depth === 'knee' ? 1.5 : 0.5,
-              waterDepthText: item.water_depth ? `${item.water_depth} depth` : 'Observed pooling',
-              status: item.status === 'VERIFIED' ? 'Verified' : item.status === 'RESOLVED' ? 'Resolved' : item.status === 'IN_PROGRESS' ? 'In Progress' : 'Unresolved',
-              updatedAtText: item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent',
-              timestamp: item.created_at || new Date().toISOString(),
-              category: item.water_depth || 'Road',
-              reportedBy: item.reporter_name || 'Citizen SOS',
-              observationType: item.status === 'VERIFIED' ? 'Verified Field Observation' : 'Geotagged Citizen SOS',
-              imageThumb: item.image_url || undefined,
-              affectedRoad: item.landmark,
-              description: item.recommended_action || 'Reported standing water on carriageway',
-            }));
-          setGenuineIncidents(mapped);
-        } else {
-          setGenuineIncidents([]);
-        }
-        setIncidentsLoading(false);
-      })
-      .catch((err) => {
-        console.warn('Could not load incidents:', err);
-        if (mounted) {
-          setGenuineIncidents([]);
-          setIncidentsLoading(false);
-        }
-      });
-    return () => { mounted = false; };
-  }, [activeDistrict.id, scoresKey]);
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // District-specific incidents (Filtered strictly by selected district)
+    const fetchIncidents = () => {
+      setIncidentsLoading(true);
+      api.getIncidents({ include_rejected: true })
+        .then((res) => {
+          if (!mounted) return;
+          if (res?.success && Array.isArray(res.incidents)) {
+            const mapped: FloodIncident[] = res.incidents.map((item: any) => {
+              const hasCoords = typeof item.lat === 'number' && typeof item.lng === 'number' && !isNaN(item.lat) && !isNaN(item.lng);
+              const rawSev = (item.severity || '').toString().toLowerCase();
+              let normSev: SeverityLevel = 'Moderate';
+              if (rawSev === 'severe' || rawSev === 'critical') normSev = 'Severe';
+              else if (rawSev === 'high') normSev = 'High';
+              else if (rawSev === 'minor' || rawSev === 'low') normSev = 'Minor';
+
+              let normStatus: IncidentStatus = 'Unresolved';
+              if (item.status === 'VERIFIED') normStatus = 'Verified';
+              else if (item.status === 'RESOLVED') normStatus = 'Resolved';
+              else if (item.status === 'IN_PROGRESS') normStatus = 'In Progress';
+              else if (item.status === 'HISTORICAL') normStatus = 'Historical';
+              else if (item.status === 'REJECTED') normStatus = 'Rejected';
+
+              return {
+                id: item.id,
+                name: item.landmark || `Incident ${item.id}`,
+                location: item.landmark,
+                landmark: item.landmark,
+                districtId: item.district_id,
+                lat: hasCoords ? item.lat : null,
+                lng: hasCoords ? item.lng : null,
+                hasCoords,
+                severity: normSev,
+                eventType: item.event_type || 'Road waterlogging',
+                drainageAssetId: item.drainage_asset_id || undefined,
+                sourceType: item.source_type || 'FIELD_SURVEY',
+                waterDepthFt: item.water_depth === 'submerged' ? 4.0 : item.water_depth === 'waist' ? 2.5 : item.water_depth === 'knee' ? 1.5 : 0.5,
+                waterDepthText: item.water_depth ? `${item.water_depth} depth` : 'Observed pooling',
+                status: normStatus,
+                updatedAtText: item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent',
+                timestamp: item.created_at || new Date().toISOString(),
+                category: item.event_type || item.water_depth || 'Road',
+                reportedBy: item.reporter_name || 'Citizen SOS',
+                observationType: item.status === 'VERIFIED' ? 'Verified Field Observation' : 'Geotagged Citizen SOS',
+                imageThumb: item.image_url || undefined,
+                affectedRoad: item.landmark,
+                description: item.recommended_action || 'Reported standing water on carriageway',
+              };
+            });
+            setGenuineIncidents(mapped);
+            setIsStaleIncidents(false);
+          }
+          setIncidentsLoading(false);
+        })
+        .catch((err) => {
+          console.warn('Could not load incidents (preserving last successful records):', err);
+          if (mounted) {
+            // Preserve last successful records — never replace with empty results on network failure
+            setIsStaleIncidents(true);
+            setIncidentsLoading(false);
+            // Auto-reconnect retry after 5 seconds
+            retryTimer = setTimeout(() => {
+              if (mounted) fetchIncidents();
+            }, 5000);
+          }
+        });
+    };
+
+    fetchIncidents();
+
+    return () => {
+      mounted = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [scoresKey]);
+
+  // District-specific incidents (Filtered strictly by selected district using canonical ID)
   const districtIncidents = useMemo<FloodIncident[]>(() => {
-    return genuineIncidents.filter((inc) => inc.districtId.toLowerCase() === activeDistrict.id.toLowerCase());
+    const activeCanon = canonicalDistrictId(activeDistrict.id);
+    return genuineIncidents.filter((inc) => {
+      const incCanon = canonicalDistrictId(inc.districtId);
+      return incCanon === activeCanon;
+    });
   }, [genuineIncidents, activeDistrict.id]);
 
   // District-specific water level stations (Authentic stations)
@@ -545,81 +592,110 @@ export function FloodMapPage({
     return [];
   }, [activeDistrict.id]);
 
-  // Filtered incidents by search
+  // Filtered incidents matching current user criteria
   const filteredIncidents = useMemo(() => {
-    if (!searchQuery.trim()) return districtIncidents;
-    const q = searchQuery.toLowerCase();
-    return districtIncidents.filter(
-      (inc) =>
-        inc.name.toLowerCase().includes(q) ||
-        inc.location.toLowerCase().includes(q) ||
-        inc.landmark.toLowerCase().includes(q) ||
-        inc.category.toLowerCase().includes(q)
-    );
-  }, [districtIncidents, searchQuery]);
+    return districtIncidents.filter((inc) => {
+      // 1. Text Search Query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesQuery =
+          inc.name.toLowerCase().includes(q) ||
+          inc.location.toLowerCase().includes(q) ||
+          inc.landmark.toLowerCase().includes(q) ||
+          (inc.eventType && inc.eventType.toLowerCase().includes(q)) ||
+          (inc.drainageAssetId && inc.drainageAssetId.toLowerCase().includes(q));
+        if (!matchesQuery) return false;
+      }
 
-  // Summary counts (Calculated strictly from genuine displayed records, no fixed totals)
+      // 2. Severity Filter
+      if (filterSeverity !== 'ALL') {
+        if (inc.severity !== filterSeverity) return false;
+      }
+
+      // 3. Event Type Filter
+      if (filterEventType !== 'ALL') {
+        if (inc.eventType !== filterEventType) return false;
+      }
+
+      // 4. Status Filter
+      if (filterStatus === 'ACTIVE') {
+        // Active view: includes Verified, Unresolved (pending), and In Progress. Excludes Rejected & Historical
+        if (inc.status === 'Rejected' || inc.status === 'Historical') return false;
+      } else if (filterStatus === 'VERIFIED') {
+        if (inc.status !== 'Verified') return false;
+      } else if (filterStatus === 'SUBMITTED_UNVERIFIED') {
+        if (inc.status !== 'Unresolved') return false;
+      } else if (filterStatus === 'HISTORICAL') {
+        if (inc.status !== 'Historical') return false;
+      } else if (filterStatus === 'REJECTED') {
+        if (inc.status !== 'Rejected') return false;
+      }
+
+      return true;
+    });
+  }, [districtIncidents, searchQuery, filterSeverity, filterEventType, filterStatus]);
+
+  // Georeferenced vs Unmapped split
+  const mappedIncidents = useMemo(() => {
+    return filteredIncidents.filter((inc) => inc.hasCoords && inc.lat !== null && inc.lng !== null);
+  }, [filteredIncidents]);
+
+  const unmappedIncidents = useMemo(() => {
+    return filteredIncidents.filter((inc) => !inc.hasCoords || inc.lat === null || inc.lng === null);
+  }, [filteredIncidents]);
+
+  // Summary counts (Calculated strictly from genuine filtered records, matching active criteria)
   const summaryCounts = useMemo(() => {
-    const severe = districtIncidents.filter((i) => i.severity === 'Severe').length;
-    const high = districtIncidents.filter((i) => i.severity === 'High').length;
-    const moderate = districtIncidents.filter((i) => i.severity === 'Moderate').length;
-    const minor = districtIncidents.filter((i) => i.severity === 'Minor').length;
-    return { severe, high, moderate, minor };
-  }, [districtIncidents]);
-
-  // Hourly rainfall
-  const rainfall24h = useMemo(() => {
-    if (weatherData?.hourly && Array.isArray(weatherData.hourly) && weatherData.hourly.length > 0) {
-      const hourlyBars = [
-        { time: '12 AM', rain: 0.8 },
-        { time: '2 AM', rain: 2.1 },
-        { time: '4 AM', rain: 3.5 },
-        { time: '6 AM', rain: 5.2 },
-        { time: '7 AM', rain: 8.0 },
-        { time: '8 AM', rain: 12.0 },
-        { time: '9 AM', rain: 16.5 },
-        { time: '10 AM', rain: 9.5 },
-        { time: '11 AM', rain: 4.2 },
-        { time: '12 PM', rain: 5.8 },
-        { time: '2 PM', rain: 4.5 },
-        { time: '4 PM', rain: 2.6 },
-        { time: '6 PM', rain: 1.5 },
-        { time: '8 PM', rain: 1.0 },
-        { time: '10 PM', rain: 0.6 },
-      ];
-      const total = hourlyBars.reduce((sum, item) => sum + item.rain, 0);
-      return { total: Math.round(total), data: hourlyBars };
-    }
+    const severe = filteredIncidents.filter((i) => i.severity === 'Severe').length;
+    const high = filteredIncidents.filter((i) => i.severity === 'High').length;
+    const moderate = filteredIncidents.filter((i) => i.severity === 'Moderate').length;
+    const minor = filteredIncidents.filter((i) => i.severity === 'Minor').length;
     return {
-      total: 42,
-      data: [
-        { time: '12 AM', rain: 0.8 },
-        { time: '2 AM', rain: 2.1 },
-        { time: '4 AM', rain: 3.5 },
-        { time: '6 AM', rain: 5.2 },
-        { time: '7 AM', rain: 8.0 },
-        { time: '8 AM', rain: 12.0 },
-        { time: '9 AM', rain: 16.5 },
-        { time: '10 AM', rain: 9.5 },
-        { time: '11 AM', rain: 4.2 },
-        { time: '12 PM', rain: 5.8 },
-        { time: '2 PM', rain: 4.5 },
-        { time: '4 PM', rain: 2.6 },
-        { time: '6 PM', rain: 1.5 },
-        { time: '8 PM', rain: 1.0 },
-        { time: '10 PM', rain: 0.6 },
-      ],
+      severe,
+      high,
+      moderate,
+      minor,
+      total: filteredIncidents.length,
+      mapped: mappedIncidents.length,
+      unmapped: unmappedIncidents.length,
+    };
+  }, [filteredIncidents, mappedIncidents.length, unmappedIncidents.length]);
+
+  // Hourly rainfall — built from real Open-Meteo hourly precipitation_mm array when available.
+  // Falls back to zero bars (not fabricated values) if weather data is not yet loaded.
+  const rainfall24h = useMemo(() => {
+    // Open-Meteo returns hourly.time (ISO strings) and hourly.precipitation_sum or hourly.precipitation
+    const hourlyTimes: string[] = weatherData?.hourly?.time || [];
+    const hourlyPrecip: number[] = weatherData?.hourly?.precipitation_sum || weatherData?.hourly?.precipitation || [];
+
+    if (hourlyTimes.length > 0 && hourlyPrecip.length > 0) {
+      // Pick up to 15 hourly points from today
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todayPoints = hourlyTimes
+        .map((t: string, i: number) => ({ t, v: hourlyPrecip[i] ?? 0 }))
+        .filter((p) => p.t.startsWith(todayStr))
+        .slice(0, 15);
+
+      if (todayPoints.length > 0) {
+        const bars = todayPoints.map((p) => ({
+          time: new Date(p.t).toLocaleTimeString([], { hour: 'numeric', hour12: true }),
+          rain: Math.round(p.v * 10) / 10,
+        }));
+        const total = bars.reduce((s, b) => s + b.rain, 0);
+        return { total: Math.round(total), data: bars, source: 'Open-Meteo' };
+      }
+    }
+
+    // No live data: return zero bars so chart is honest, not fabricated
+    return {
+      total: 0,
+      data: Array.from({ length: 8 }, (_, i) => ({
+        time: `${i * 3} h`,
+        rain: 0,
+      })),
+      source: 'No live data',
     };
   }, [weatherData]);
-
-  // Latest radar tile URL for Rainfall Overlay
-  const radarTileUrl = useMemo(() => {
-    if (radarMeta?.host && Array.isArray(radarMeta.pastFrames) && radarMeta.pastFrames.length > 0) {
-      const latestFrame = radarMeta.pastFrames[radarMeta.pastFrames.length - 1];
-      return `${radarMeta.host}${latestFrame.path}/256/{z}/{x}/{y}/4/1_1.png`;
-    }
-    return 'https://tilecache.rainviewer.com/v2/radar/nowcast_latest/256/{z}/{x}/{y}/4/1_1.png';
-  }, [radarMeta]);
 
   // MapLibre Map Initialization
   useEffect(() => {
@@ -658,11 +734,12 @@ export function FloodMapPage({
             attribution: 'Map & Imagery © Google',
           },
           // 4. NASA GIBS - Satellite Imagery (MODIS Terra True-Color)
+          // maxzoom 8 prevents GIBS from returning "Zoom Level Not Supported" tiles at z>=9
           'src-nasa-true-color': {
             type: 'raster',
             tiles: [getNasaGibsTileUrl('MODIS_Terra_CorrectedReflectance_TrueColor', nasaDate)],
             tileSize: 256,
-            maxzoom: 9,
+            maxzoom: 8,
             attribution: 'NASA EOSDIS GIBS',
           },
           // 5. NASA GIBS - False-Color (Bands 7-2-1 Inundation & Surface Water)
@@ -670,7 +747,7 @@ export function FloodMapPage({
             type: 'raster',
             tiles: [getNasaGibsTileUrl('MODIS_Terra_CorrectedReflectance_Bands721', nasaDate)],
             tileSize: 256,
-            maxzoom: 9,
+            maxzoom: 8,
             attribution: 'NASA EOSDIS GIBS',
           },
           // 6. Street Map (OpenStreetMap Standard)
@@ -686,13 +763,6 @@ export function FloodMapPage({
             tiles: ['https://a.tile.opentopomap.org/{z}/{x}/{y}.png'],
             tileSize: 256,
             attribution: 'Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap (CC-BY-SA)',
-          },
-          // 8. Live Doppler Rainfall Radar Overlay
-          'src-rainfall-radar': {
-            type: 'raster',
-            tiles: [radarTileUrl],
-            tileSize: 256,
-            attribution: 'RainViewer Live Doppler Radar',
           },
           // Flooded Road Lines GeoJSON
           'src-flooded-roads': {
@@ -803,38 +873,38 @@ export function FloodMapPage({
                 'interpolate',
                 ['linear'],
                 ['get', 'weight'],
-                0, 0.1,
+                0, 0.2,
                 1, 1.0
               ],
               'heatmap-intensity': [
                 'interpolate',
                 ['linear'],
                 ['zoom'],
-                0, 1.0,
-                8, 2.5,
-                11, 4.0,
-                15, 6.0
+                5, 0.8,
+                9, 1.0,
+                11, 1.2,
+                15, 1.5
               ],
               'heatmap-color': [
                 'interpolate',
                 ['linear'],
                 ['heatmap-density'],
-                0, 'rgba(0, 0, 0, 0)',
-                0.15, 'rgba(56, 189, 248, 0.5)',   // Cool Cyan
-                0.35, 'rgba(34, 197, 94, 0.7)',    // Lime Green
-                0.55, 'rgba(234, 179, 8, 0.85)',   // Amber Yellow
-                0.75, 'rgba(249, 115, 22, 0.95)',  // Deep Orange
-                1.0, 'rgba(239, 68, 68, 1.0)'      // Crimson Red
+                0,    'rgba(0, 0, 0, 0)',
+                0.05, 'rgba(16, 185, 129, 0.6)',   // Minor (Green)
+                0.25, 'rgba(234, 179, 8, 0.8)',    // Moderate (Amber)
+                0.55, 'rgba(249, 115, 22, 0.9)',   // High (Orange)
+                0.85, 'rgba(239, 68, 68, 0.95)'    // Severe (Red)
               ],
               'heatmap-radius': [
                 'interpolate',
                 ['linear'],
                 ['zoom'],
-                4, 16,
-                7, 30,
-                9, 48,
-                12, 70,
-                15, 95
+                5, 10,
+                8, 16,
+                10, 22,
+                12, 28,
+                14, 34,
+                16, 42
               ],
               'heatmap-opacity': 0.88,
             },
@@ -877,15 +947,6 @@ export function FloodMapPage({
             },
           },
 
-          // Overlay: Live Rainfall Radar Overlay
-          {
-            id: 'lyr-rainfall-radar',
-            type: 'raster',
-            source: 'src-rainfall-radar',
-            layout: { visibility: 'none' },
-            paint: { 'raster-opacity': 0.65 },
-          },
-
           // Overlay: Flooded Road Highlight Lines
           {
             id: 'flooded-roads-glow',
@@ -925,12 +986,12 @@ export function FloodMapPage({
             },
           },
 
-          // Overlay: District Boundary Outline and Glow
+          // District Boundary data preserved in src-district-boundary for bounds calculations, but lines hidden from visible map
           {
             id: 'lyr-district-boundary-glow',
             type: 'line',
             source: 'src-district-boundary',
-            layout: { visibility: 'visible' },
+            layout: { visibility: 'none' },
             paint: {
               'line-color': '#0284c7',
               'line-width': 7,
@@ -942,7 +1003,7 @@ export function FloodMapPage({
             id: 'lyr-district-boundary-line',
             type: 'line',
             source: 'src-district-boundary',
-            layout: { visibility: 'visible' },
+            layout: { visibility: 'none' },
             paint: {
               'line-color': '#38bdf8',
               'line-width': 2.5,
@@ -1016,12 +1077,46 @@ export function FloodMapPage({
     return () => { mounted = false; };
   }, []);
 
-  // Fit map viewport specifically to the selected district boundary geometry
+  // Fit map viewport specifically to the selected district boundary geometry or statewide Karnataka
   const fitToActiveDistrict = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    const feat = districtGeoFeatures[activeDistrict.id] || 
+    // Priority 1: fit to actual incident locations if any mapped incidents exist
+    const currentMapped = mappedIncidents.filter((inc) => {
+      const incDist = (inc.districtId || '').toLowerCase().replace(/[\s-]+/g, '_');
+      const activeId = activeDistrict.id.toLowerCase().replace(/[\s-]+/g, '_');
+      return incDist === activeId ||
+        (incDist === 'davangere' && activeId === 'davanagere') ||
+        (incDist === 'davanagere' && activeId === 'davangere');
+    });
+    if (currentMapped.length > 0) {
+      let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+      currentMapped.forEach((inc) => {
+        if (inc.lat !== null && inc.lng !== null) {
+          if (inc.lat < minLat) minLat = inc.lat;
+          if (inc.lat > maxLat) maxLat = inc.lat;
+          if (inc.lng < minLng) minLng = inc.lng;
+          if (inc.lng > maxLng) maxLng = inc.lng;
+        }
+      });
+      if (minLat !== Infinity) {
+        // Single incident: zoom to point at street level; multiple: fit bounds
+        if (currentMapped.length === 1) {
+          map.flyTo({ center: [minLng, minLat], zoom: 13.5, duration: 1000 });
+        } else {
+          map.fitBounds([[minLng, minLat], [maxLng, maxLat]], {
+            padding: { top: 80, bottom: 80, left: 80, right: 80 },
+            maxZoom: 14,
+            duration: 1000,
+          });
+        }
+        return;
+      }
+    }
+
+    // Priority 2: fit to verified district boundary polygon
+    const feat = districtGeoFeatures[activeDistrict.id] ||
                  districtGeoFeatures[activeDistrict.name.toLowerCase().trim()] ||
                  districtGeoFeatures[activeDistrict.displayName.toLowerCase().trim()];
 
@@ -1037,104 +1132,104 @@ export function FloodMapPage({
       }
     }
 
-    // Verified district center fallback if boundary geometry is not yet ready
+    // Priority 3: verified district-center fallback
     map.flyTo({
       center: [activeDistrict.lng, activeDistrict.lat],
       zoom: 10.2,
       duration: 1000,
     });
-  }, [activeDistrict, districtGeoFeatures]);
+  }, [activeDistrict, districtGeoFeatures, mappedIncidents]);
+
+  const prevDistrictIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // Zoom and reset state ONLY when the district changes, never on manual pan/zoom
+    if (prevDistrictIdRef.current === activeDistrict.id) return;
+    prevDistrictIdRef.current = activeDistrict.id;
+
+    // Immediately clear stale markers, heatmap points, and previous-district selection
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+    const map = mapRef.current;
+    if (map) {
+      const hmSrc = map.getSource('src-waterlog-heatmap-points') as maplibregl.GeoJSONSource | undefined;
+      if (hmSrc) hmSrc.setData({ type: 'FeatureCollection', features: [] });
+    }
+    setSelectedIncident(null);
+
     fitToActiveDistrict();
-  }, [activeDistrict, fitToActiveDistrict]);
+  }, [activeDistrict.id, fitToActiveDistrict]);
 
   // Update district boundary layer on map
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReadyRef.current) return;
-    const source = map.getSource('src-district-boundary') as maplibregl.GeoJSONSource | undefined;
-    if (!source) return;
+    if (!map) return;
 
-    const feat = districtGeoFeatures[activeDistrict.id] || 
-                 districtGeoFeatures[activeDistrict.name.toLowerCase().trim()] ||
-                 districtGeoFeatures[activeDistrict.displayName.toLowerCase().trim()];
+    const updateBoundary = () => {
+      const source = map.getSource('src-district-boundary') as maplibregl.GeoJSONSource | undefined;
+      if (!source) return;
+      const feat = districtGeoFeatures[activeDistrict.id] ||
+                   districtGeoFeatures[activeDistrict.name.toLowerCase().trim()] ||
+                   districtGeoFeatures[activeDistrict.displayName.toLowerCase().trim()];
+      source.setData({ type: 'FeatureCollection', features: feat ? [feat] : [] });
+    };
 
-    if (feat) {
-      source.setData({
-        type: 'FeatureCollection',
-        features: [feat],
-      });
-    } else {
-      source.setData({
-        type: 'FeatureCollection',
-        features: [],
-      });
-    }
+    if (mapReadyRef.current) updateBoundary();
+    else map.once('load', updateBoundary);
   }, [activeDistrict, districtGeoFeatures]);
 
-  // Synchronize Real-Time Hydrological Heatmap GeoJSON Points from authentic incidents + AI risk hexes
+  // Clear Ballari-specific hardcoded flooded-road segments when switching districts
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReadyRef.current) return;
-    const source = map.getSource('src-waterlog-heatmap-points') as maplibregl.GeoJSONSource | undefined;
-    if (!source) return;
+    if (!map) return;
+    const clearRoads = () => {
+      const source = map.getSource('src-flooded-roads') as maplibregl.GeoJSONSource | undefined;
+      if (source && activeDistrict.id !== 'ballari') {
+        source.setData({ type: 'FeatureCollection', features: [] });
+      }
+    };
+    if (mapReadyRef.current) clearRoads();
+    else map.once('load', clearRoads);
+  }, [activeDistrict.id]);
 
-    try {
-      const incidentFeatures = districtIncidents.map((inc) => {
-        let weight = 0.5;
-        if (inc.severity === 'Severe') weight = 1.0;
-        else if (inc.severity === 'High') weight = 0.85;
-        else if (inc.severity === 'Moderate') weight = 0.6;
-        else if (inc.severity === 'Minor') weight = 0.35;
+  // Synchronize Real-Time Hydrological Heatmap GeoJSON Points strictly from active georeferenced observations
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
 
-        return {
-          type: 'Feature' as const,
-          properties: {
-            weight,
-            type: 'incident',
-            name: inc.name,
-            severity: inc.severity,
-          },
-          geometry: {
-            type: 'Point' as const,
-            coordinates: [inc.lng, inc.lat],
-          },
-        };
-      });
-
-      const hexFeatures = modelHexScores.flatMap((hex) => {
-        try {
-          if (!hex.h3_index || !h3.cellToLatLng) return [];
-          const [lat, lng] = h3.cellToLatLng(hex.h3_index);
-          const weight = Math.min(1.0, Math.max(0.12, (hex.risk_score || 0) / 100));
-          return [{
+    const updateHeatmap = () => {
+      const source = map.getSource('src-waterlog-heatmap-points') as maplibregl.GeoJSONSource | undefined;
+      if (!source) return;
+      try {
+        const incidentFeatures = mappedIncidents.map((inc) => {
+          let weight = 0.45;
+          if (inc.severity === 'Severe') weight = 1.0;
+          else if (inc.severity === 'High') weight = 0.70;
+          else if (inc.severity === 'Moderate') weight = 0.45;
+          else if (inc.severity === 'Minor') weight = 0.20;
+          return {
             type: 'Feature' as const,
-            properties: {
-              weight,
-              type: 'model_hex',
-              risk_score: hex.risk_score,
-            },
-            geometry: {
-              type: 'Point' as const,
-              coordinates: [lng, lat],
-            },
-          }];
-        } catch {
-          return [];
-        }
-      });
+            properties: { weight, type: 'incident', name: inc.name, severity: inc.severity },
+            geometry: { type: 'Point' as const, coordinates: [inc.lng!, inc.lat!] },
+          };
+        });
+        source.setData({ type: 'FeatureCollection', features: incidentFeatures });
+      } catch (err) {
+        console.warn('Error updating heatmap source data:', err);
+      }
+    };
 
-      source.setData({
-        type: 'FeatureCollection',
-        features: [...incidentFeatures, ...hexFeatures],
-      });
-    } catch (err) {
-      console.warn('Error updating heatmap source data:', err);
+    if (mapReadyRef.current) {
+      updateHeatmap();
+    } else {
+      // shortcut: schedule on load; safe to call multiple times since map fires 'load' once
+      map.once('load', updateHeatmap);
     }
-  }, [districtIncidents, modelHexScores]);
+  }, [mappedIncidents]);
 
   // Synchronize Heatmap Layer Visibility with Switcher
+  // Also show/hide incident DOM markers — heatmap ON hides them, OFF restores them.
+  // Markers stay in the DOM; no records are deleted.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -1145,6 +1240,13 @@ export function FloodMapPage({
     } catch {
       // ignore
     }
+    // Toggle incident marker visibility
+    markersRef.current.forEach((marker) => {
+      const el = marker.getElement();
+      if (el?.dataset?.markerType === 'incident') {
+        el.style.display = heatmapMode ? 'none' : '';
+      }
+    });
   }, [heatmapMode]);
 
   // Update Model-Estimated Risk Zones in GeoJSON Source
@@ -1281,10 +1383,7 @@ export function FloodMapPage({
     if (map.getLayer('lyr-risk-hex-fill')) map.setLayoutProperty('lyr-risk-hex-fill', 'visibility', riskVis);
     if (map.getLayer('lyr-risk-hex-line')) map.setLayoutProperty('lyr-risk-hex-line', 'visibility', riskVis);
 
-    // Rainfall Radar Overlay
-    const radarVis = overlayRainfallRadar ? 'visible' : 'none';
-    if (map.getLayer('lyr-rainfall-radar')) map.setLayoutProperty('lyr-rainfall-radar', 'visibility', radarVis);
-  }, [overlayFloodedRoads, overlayFloodRiskZones, overlayRainfallRadar]);
+  }, [overlayFloodedRoads, overlayFloodRiskZones]);
 
   // Render Custom DOM Markers for Incidents and Water Gauges
   useEffect(() => {
@@ -1310,17 +1409,18 @@ export function FloodMapPage({
       }
     };
 
-    // When Heatmap is ON, normal markers and labels are hidden from the map (Requirement 9)
-    if (heatmapMode) {
-      return;
-    }
+    // Markers are hidden when heatmap is ON to avoid visual double-counting.
+    // Heatmap OFF restores them. Neither branch deletes any records.
 
-    // 1. Live Incidents (if overlay is enabled and Heatmap is OFF)
+    // 1. Live Incidents (if overlay enabled; hidden when heatmap is ON)
     if (overlayLiveIncidents) {
-      districtIncidents.forEach((inc) => {
+      mappedIncidents.forEach((inc) => {
         const colors = colorForSeverity(inc.severity);
         const el = document.createElement('div');
         el.className = 'group cursor-pointer select-none';
+        // Hide the element immediately if heatmap is currently active
+        if (heatmapMode) el.style.display = 'none';
+        el.dataset.markerType = 'incident';
         el.innerHTML = `
           <div style="display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));">
             <div style="
@@ -1358,11 +1458,13 @@ export function FloodMapPage({
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           setSelectedIncident(inc);
-          map.flyTo({ center: [inc.lng, inc.lat], zoom: 12.5, duration: 800 });
+          if (inc.lng !== null && inc.lat !== null) {
+            map.flyTo({ center: [inc.lng, inc.lat], zoom: 12.5, duration: 800 });
+          }
         });
 
         const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-          .setLngLat([inc.lng, inc.lat])
+          .setLngLat([inc.lng!, inc.lat!])
           .addTo(map);
 
         markersRef.current.push(marker);
@@ -1406,7 +1508,7 @@ export function FloodMapPage({
         markersRef.current.push(marker);
       });
     }
-  }, [districtIncidents, districtWaterLevels, overlayLiveIncidents, overlayWaterLevels, heatmapMode]);
+  }, [mappedIncidents, districtWaterLevels, overlayLiveIncidents, overlayWaterLevels, heatmapMode]);
 
   const activeBasemapConfig = useMemo(() => {
     return BASEMAP_OPTIONS.find((b) => b.id === basemapMode) || BASEMAP_OPTIONS[0];
@@ -1511,6 +1613,102 @@ export function FloodMapPage({
         </div>
       </div>
 
+      {/* ── SYNCHRONIZED INCIDENT & DRAINAGE FILTER BAR (Requirement 5) ── */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-[#d6e3f0] bg-white p-2.5 px-3.5 shadow-sm dark:border-slate-800 dark:bg-[#111a2b]">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+            <Filter size={14} className="text-[#1d6fd8]" />
+            <span>Filters:</span>
+          </div>
+
+          {/* Severity Filter Pills */}
+          <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-0.5 dark:bg-slate-800/80">
+            {(['ALL', 'Severe', 'High', 'Moderate', 'Minor'] as const).map((sev) => {
+              const count = sev === 'ALL'
+                ? districtIncidents.length
+                : districtIncidents.filter((i) => i.severity === sev).length;
+              const isActive = filterSeverity === sev;
+              return (
+                <button
+                  key={sev}
+                  type="button"
+                  onClick={() => setFilterSeverity(sev)}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                    isActive
+                      ? sev === 'Severe'
+                        ? 'bg-rose-500 text-white shadow-xs'
+                        : sev === 'High'
+                        ? 'bg-orange-500 text-white shadow-xs'
+                        : sev === 'Moderate'
+                        ? 'bg-amber-500 text-white shadow-xs'
+                        : sev === 'Minor'
+                        ? 'bg-emerald-500 text-white shadow-xs'
+                        : 'bg-[#1d6fd8] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                  }`}
+                >
+                  {sev === 'ALL' ? 'All Severities' : sev} ({count})
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Event Type Dropdown */}
+          <div className="relative">
+            <select
+              value={filterEventType}
+              onChange={(e) => setFilterEventType(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 shadow-sm outline-none transition focus:border-[#1d6fd8] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            >
+              <option value="ALL">All Event Types</option>
+              <option value="Road waterlogging">Road waterlogging</option>
+              <option value="Underpass water accumulation">Underpass water accumulation</option>
+              <option value="Drainage blockage">Drainage blockage</option>
+              <option value="Stormwater drain overflow">Stormwater drain overflow</option>
+              <option value="Localized street flooding">Localized street flooding</option>
+              <option value="Water stagnation">Water stagnation</option>
+              <option value="Clogged drains">Clogged drains</option>
+            </select>
+          </div>
+
+          {/* Status Dropdown */}
+          <div className="relative">
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 shadow-sm outline-none transition focus:border-[#1d6fd8] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            >
+              <option value="ACTIVE">Active (Verified & Pending)</option>
+              <option value="VERIFIED">Verified Only</option>
+              <option value="SUBMITTED_UNVERIFIED">Pending Verification</option>
+              <option value="HISTORICAL">Historical Archive</option>
+              <option value="ALL">All Statuses (incl. Historical)</option>
+              <option value="REJECTED">Rejected Reports</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Right side of filter bar: Reset Filters & Active count */}
+        <div className="flex items-center gap-3">
+          <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+            Showing <strong className="text-slate-800 dark:text-white">{filteredIncidents.length}</strong> observations
+            ({mappedIncidents.length} mapped{unmappedIncidents.length > 0 ? `, ${unmappedIncidents.length} unmapped` : ''})
+          </div>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="inline-flex items-center gap-1 rounded-xl bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-700 transition hover:bg-rose-50 hover:text-rose-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-rose-950/60 dark:hover:text-rose-300"
+              title="Reset all filters to default"
+            >
+              <RotateCcw size={12} />
+              <span>Reset Filters</span>
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* ── MAIN MAP + SIDE PANEL SECTION ── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         {/* LEFT COLUMN: INTERACTIVE MAP (approx 68% width on desktop) */}
@@ -1594,22 +1792,16 @@ export function FloodMapPage({
                 <Layers size={13} />
                 Flooded Roads
               </button>
-
-              <button
-                type="button"
-                onClick={() => setOverlayRainfallRadar((v) => !v)}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold transition ${
-                  overlayRainfallRadar
-                    ? 'bg-blue-50 text-[#1d6fd8] dark:bg-blue-950/60'
-                    : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-                title="Toggle Live Rainfall Radar"
-              >
-                <CloudRain size={13} />
-                Radar
-              </button>
             </div>
           </div>
+
+          {/* Heatmap Empty State Banner */}
+          {heatmapMode && mappedIncidents.length === 0 && (
+            <div className="absolute left-1/2 top-16 z-20 -translate-x-1/2 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/95 px-4 py-2.5 text-xs font-semibold text-slate-300 shadow-xl backdrop-blur">
+              <Info size={16} className="text-cyan-400 shrink-0" />
+              <span>No georeferenced waterlogging observations available for {activeDistrict.displayName} to render heatmap.</span>
+            </div>
+          )}
 
           {/* NASA Earth Observation Layer Banner & Controls */}
           {isNasaLayerActive && (
@@ -1744,7 +1936,7 @@ export function FloodMapPage({
                   <span>🔥 Risk Heatmap</span>
                   <span className="font-extrabold text-emerald-600">LIVE</span>
                 </div>
-                <div className="mt-1.5 h-2.5 w-full rounded-full bg-gradient-to-r from-sky-400 via-emerald-400 via-yellow-400 via-orange-500 to-rose-600 shadow-inner" />
+                <div className="mt-1.5 h-2.5 w-full rounded-full bg-gradient-to-r from-emerald-500 via-yellow-400 via-orange-500 to-rose-600 shadow-inner" />
                 <div className="mt-1 flex justify-between text-[9px] font-bold text-slate-400">
                   <span>Low Risk</span>
                   <span>Severe Flood</span>
@@ -1837,9 +2029,40 @@ export function FloodMapPage({
               <h3 className="mt-2 text-sm font-bold text-slate-900 dark:text-white">
                 {selectedIncident.name}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {selectedIncident.landmark} · Status: <span className="font-semibold text-slate-700 dark:text-slate-200">{selectedIncident.status}</span>
+
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  {selectedIncident.eventType || 'Road waterlogging'}
+                </span>
+                <span className={`rounded px-1.5 py-0.5 font-bold ${
+                  selectedIncident.status === 'Verified'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : selectedIncident.status === 'Historical'
+                    ? 'bg-slate-100 text-slate-600'
+                    : 'bg-amber-100 text-amber-700'
+                }`}>
+                  {selectedIncident.status === 'Unresolved' ? 'Pending Verification' : selectedIncident.status}
+                </span>
+                {selectedIncident.drainageAssetId && (
+                  <span className="rounded bg-blue-100 px-1.5 py-0.5 font-bold text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">
+                    Drainage Asset: {selectedIncident.drainageAssetId}
+                  </span>
+                )}
+              </div>
+
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                {selectedIncident.landmark} · {selectedIncident.reportedBy}
               </p>
+              {selectedIncident.hasCoords ? (
+                <p className="text-[10px] text-slate-400">
+                  GPS: {selectedIncident.lat?.toFixed(4)}, {selectedIncident.lng?.toFixed(4)}
+                </p>
+              ) : (
+                <p className="text-[10px] font-bold text-amber-500">
+                  GPS Coordinates: Pending Field Verification
+                </p>
+              )}
+
               <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-300">
                 {selectedIncident.description}
               </p>
@@ -1851,14 +2074,14 @@ export function FloodMapPage({
                     if (onNavigateToDrainageActions) {
                       onNavigateToDrainageActions(
                         activeDistrict.id,
-                        selectedIncident.drainageActionId,
+                        selectedIncident.drainageAssetId || selectedIncident.drainageActionId,
                         selectedIncident.location
                       );
                     }
                   }}
                   className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#1d6fd8] px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#1558a8]"
                 >
-                  <span>View Drainage Action</span>
+                  <span>{selectedIncident.drainageAssetId ? 'View in Drainage Module' : 'View Drainage Action'}</span>
                   <ArrowRight size={13} />
                 </button>
               </div>
@@ -2106,26 +2329,6 @@ export function FloodMapPage({
                       />
                     </label>
 
-                    {/* Live Rainfall Radar Overlay */}
-                    <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 p-3 transition hover:bg-slate-100/70 dark:border-slate-800 dark:bg-[#162234]">
-                      <div className="flex items-center gap-2.5">
-                        <CloudRain size={16} className="text-[#1d6fd8]" />
-                        <div>
-                          <p className="text-xs font-bold text-slate-900 dark:text-white">
-                            Rainfall Radar Overlay
-                          </p>
-                          <p className="text-[10px] text-slate-500">
-                            RainViewer Doppler precipitation radar stream
-                          </p>
-                        </div>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={overlayRainfallRadar}
-                        onChange={(e) => setOverlayRainfallRadar(e.target.checked)}
-                        className="h-4 w-4 rounded text-[#1d6fd8] accent-[#1d6fd8]"
-                      />
-                    </label>
 
                     {/* Water Level Gauge Stations */}
                     <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 p-3 transition hover:bg-slate-100/70 dark:border-slate-800 dark:bg-[#162234]">
@@ -2251,28 +2454,39 @@ export function FloodMapPage({
             </div>
 
             {/* Scrollable list of reports */}
-            <div className="mt-3 flex flex-1 flex-col divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+            <div className="mt-3 flex flex-1 flex-col divide-y divide-slate-100 overflow-y-auto max-h-[460px] dark:divide-slate-800">
               {filteredIncidents.length === 0 ? (
                 <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-[#1d6fd8] dark:bg-blue-950/60 dark:text-blue-300 mb-3">
                     <CheckCircle2 size={24} />
                   </div>
                   <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                    No verified waterlogging observations available for this district.
+                    No matching waterlogging observations found.
                   </p>
                   <p className="mt-1 text-[11px] text-slate-400 max-w-xs">
-                    Field engineer observations and persistent citizen reports for {activeDistrict.displayName} will appear here when submitted.
+                    {hasActiveFilters ? 'Try adjusting your filters or click Reset Filters.' : `No observations recorded for ${activeDistrict.displayName}.`}
                   </p>
+                  {hasActiveFilters && (
+                    <button
+                      type="button"
+                      onClick={resetFilters}
+                      className="mt-2.5 rounded-lg bg-blue-50 px-3 py-1 text-xs font-bold text-[#1d6fd8] hover:bg-blue-100 transition"
+                    >
+                      Reset Filters
+                    </button>
+                  )}
                 </div>
               ) : (
-                filteredIncidents.slice(0, 5).map((inc) => {
+                filteredIncidents.map((inc) => {
                   const isSelected = selectedIncident?.id === inc.id;
                   return (
                     <div
                       key={inc.id}
                       onClick={() => {
                         setSelectedIncident(inc);
-                        mapRef.current?.flyTo({ center: [inc.lng, inc.lat], zoom: 13, duration: 800 });
+                        if (inc.hasCoords && inc.lat !== null && inc.lng !== null) {
+                          mapRef.current?.flyTo({ center: [inc.lng, inc.lat], zoom: 13, duration: 800 });
+                        }
                       }}
                       className={`group flex cursor-pointer items-center justify-between gap-3 py-3 transition hover:bg-slate-50/80 dark:hover:bg-slate-800/50 ${
                         isSelected ? 'bg-blue-50/50 dark:bg-blue-950/30' : ''
@@ -2295,15 +2509,27 @@ export function FloodMapPage({
                         </span>
 
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-bold text-slate-900 dark:text-white group-hover:text-[#1d6fd8]">
-                            {inc.name}
-                          </p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="truncate text-xs font-bold text-slate-900 dark:text-white group-hover:text-[#1d6fd8]">
+                              {inc.name}
+                            </p>
+                            {inc.drainageAssetId && (
+                              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-[#1d6fd8] dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                Drainage: {inc.drainageAssetId}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            {inc.severity} waterlogging ({inc.waterDepthFt} ft)
+                            {inc.eventType || 'Waterlogging'} · {inc.severity} ({inc.waterDepthFt} ft)
                           </p>
-                          <p className="text-[10px] text-slate-400">
-                            {inc.updatedAtText} · {inc.observationType.split(' ')[0]}
-                          </p>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                            <span>{inc.updatedAtText}</span>
+                            <span>•</span>
+                            <span>{inc.reportedBy}</span>
+                            {!inc.hasCoords && (
+                              <span className="text-amber-500 font-bold">• No GPS Coords</span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -2322,15 +2548,15 @@ export function FloodMapPage({
                         <span
                           className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
                             inc.status === 'Unresolved'
-                              ? 'border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/60 dark:text-rose-300'
-                              : inc.status === 'In Progress'
                               ? 'border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-300'
+                              : inc.status === 'Historical'
+                              ? 'border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                               : inc.status === 'Verified'
                               ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-300'
                               : 'border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-300'
                           }`}
                         >
-                          {inc.status}
+                          {inc.status === 'Unresolved' ? 'Pending' : inc.status}
                         </span>
                       </div>
                     </div>
@@ -2368,19 +2594,21 @@ export function FloodMapPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-[11px]">
-                {districtIncidents.length === 0 ? (
+                {filteredIncidents.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-6 text-center text-xs text-slate-400 italic dark:text-slate-500">
-                      No verified waterlogging observations available for {activeDistrict.displayName}.
+                      No matching waterlogging observations for current criteria in {activeDistrict.displayName}.
                     </td>
                   </tr>
                 ) : (
-                  districtIncidents.slice(0, 5).map((inc, idx) => (
+                  filteredIncidents.slice(0, 5).map((inc, idx) => (
                     <tr
                       key={inc.id}
                       onClick={() => {
                         setSelectedIncident(inc);
-                        mapRef.current?.flyTo({ center: [inc.lng, inc.lat], zoom: 13, duration: 800 });
+                        if (inc.hasCoords && inc.lat !== null && inc.lng !== null) {
+                          mapRef.current?.flyTo({ center: [inc.lng, inc.lat], zoom: 13, duration: 800 });
+                        }
                       }}
                       className="cursor-pointer transition hover:bg-slate-50 dark:hover:bg-slate-800/50"
                     >

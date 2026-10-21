@@ -662,101 +662,14 @@ export const BALLARI_DRAINAGE_ASSETS: DrainageAsset[] = [
   },
 ];
 
-// ── District Baseline Generator for all other 30 Karnataka Districts ──
-export function getDrainageAssetsForDistrict(districtId: string, lat: number, lng: number): DrainageAsset[] {
+// ── District Baseline Registry ──
+export function getDrainageAssetsForDistrict(districtId: string, lat?: number, lng?: number): DrainageAsset[] {
   if (districtId === 'ballari') {
     return BALLARI_DRAINAGE_ASSETS;
   }
-
-  // Generate verified-format assets anchored to the district's genuine coordinates
-  const types: DrainageAssetType[] = [
-    'Major Drain',
-    'Secondary Drain',
-    'Storm Water Drain',
-    'Culvert',
-    'Outfall Point',
-  ];
-
-  const prefix = districtId.substring(0, 3).toUpperCase();
-  const districtName = districtId.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-
-  const sampleNames = [
-    `${districtName} Central Collector Canal`,
-    `${districtName} North Valley Drainage Channel`,
-    `${districtName} Railway Station Underpass Culvert`,
-    `${districtName} Market Area Stormwater Trunk`,
-    `${districtName} River Outfall Sluice Point`,
-    `${districtName} Industrial Estate Relief Channel`,
-    `${districtName} Agricultural Command Collector`,
-    `${districtName} Main Ring Road Cross-Culvert`,
-    `${districtName} East Sub-Catchment Drain`,
-    `${districtName} Bypass Stormwater Interceptor`,
-    `${districtName} Lowland Village Escape Channel`,
-    `${districtName} Municipal Invert Drain #4`,
-  ];
-
-  return sampleNames.map((name, i) => {
-    const assetType = types[i % types.length];
-    const offsetLat = (i * 0.015 - 0.08) * (i % 2 === 0 ? 1 : -1);
-    const offsetLng = (i * 0.018 - 0.07) * (i % 2 === 0 ? -1 : 1);
-    const isIssue = i === 1 || i === 5;
-    const isMaint = i === 3;
-    const condition: DrainageCondition = isIssue
-      ? 'Blocked / Critical'
-      : isMaint
-      ? 'Under Maintenance'
-      : i % 3 === 0
-      ? 'Moderate'
-      : 'Good';
-    const status: DrainageAssetStatus = isIssue
-      ? 'Reported Issue'
-      : isMaint
-      ? 'Under Maintenance'
-      : 'Functional';
-
-    const capacityM = assetType === 'Major Drain' ? 4.0 : assetType === 'Secondary Drain' ? 3.2 : 2.5;
-    const waterLevelM = Math.round((capacityM * (0.35 + (i * 0.05) % 0.55)) * 10) / 10;
-    const utilPct = Math.round((waterLevelM / capacityM) * 100);
-
-    return {
-      id: `DRN-${prefix}-${String(i + 1).padStart(3, '0')}`,
-      name,
-      districtId,
-      locality: `${districtName} Sector ${i + 1}`,
-      assetType,
-      condition,
-      status,
-      currentWaterLevelM: waterLevelM,
-      capacityM,
-      utilizationPct: utilPct,
-      trend: i % 2 === 0 ? 'rising' : 'falling',
-      lat: Math.round((lat + offsetLat) * 10000) / 10000,
-      lng: Math.round((lng + offsetLng) * 10000) / 10000,
-      lengthKm: Math.round((1.5 + (i * 0.8)) * 10) / 10,
-      lastInspectionDate: '16 Aug 2024',
-      inspectionAction: isIssue ? 'Verification pending' : isMaint ? 'In progress' : 'No action',
-      assignedAgency: 'District Drainage & PWD Division',
-      reportedIssue: isIssue
-        ? {
-            issueId: `ISS-${prefix}-${i + 10}`,
-            description: `Reported hydraulic choking at ${name}`,
-            severity: 'High',
-            reportedDate: '21 Aug 2024, 07:30 AM',
-            verificationStatus: 'Awaiting verification',
-            reportedBy: 'Local Field Surveyor',
-          }
-        : undefined,
-      maintenanceTask: isMaint
-        ? {
-            taskId: `TSK-${prefix}-${i + 100}`,
-            taskTitle: `Desilting & culvert clearance (${name})`,
-            status: 'In Progress',
-            priority: 'High',
-            dueDate: '23 Aug',
-          }
-        : undefined,
-    };
-  });
+  // Other districts do not have hardcoded pseudo-assets.
+  // Real datasets are loaded dynamically from the backend drainage lines registry.
+  return [];
 }
 
 // ── Summary Metrics Computation ──

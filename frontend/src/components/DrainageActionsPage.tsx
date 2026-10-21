@@ -55,7 +55,6 @@ import {
   BALLARI_DRAINAGE_ASSETS,
   getDrainageAssetsForDistrict,
   calculateDrainageSummary,
-  DRAINAGE_ADVISORIES_DEFAULT,
 } from '../data/karnatakaDrainageAssets';
 
 export interface DrainageActionsPageProps {
@@ -72,7 +71,7 @@ export interface DrainageActionsPageProps {
 }
 
 export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
-  selectedDistrictId = 'ballari',
+  selectedDistrictId = 'bengaluru_urban',
   onSelectedDistrictIdChange,
   onNavigateToMap,
 }) => {
@@ -119,20 +118,54 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
     );
   }, [districtId]);
 
+  // ── Database Drainage Infrastructure State ──
+  const [dbSummary, setDbSummary] = useState<any>(null);
+
   // ── Assets State ──
   const [assets, setAssets] = useState<DrainageAsset[]>(() =>
-    getDrainageAssetsForDistrict(currentDistrict.id, currentDistrict.lat, currentDistrict.lng)
+    currentDistrict.id === 'ballari' ? BALLARI_DRAINAGE_ASSETS : []
   );
 
-  useEffect(() => {
-    setAssets(getDrainageAssetsForDistrict(currentDistrict.id, currentDistrict.lat, currentDistrict.lng));
-  }, [currentDistrict]);
+  // Dynamic Summary Metrics computed from DB when available
+  const summary: DrainageSummary = useMemo(() => {
+    if (dbSummary && dbSummary.has_drainage_data) {
+      return {
+        totalAssets: dbSummary.totalAssets,
+        reportedIssues: dbSummary.reportedIssues,
+        awaitingVerification: dbSummary.awaitingVerification,
+        underMaintenance: dbSummary.underMaintenance,
+        functionalAssets: dbSummary.functionalAssets,
+        totalLengthKm: dbSummary.totalLengthKm,
+        networkBreakdown: dbSummary.networkBreakdown,
+        averageUtilizationPct: dbSummary.averageUtilizationPct,
+        utilizationBuckets: dbSummary.utilizationBuckets,
+        conditionCounts: dbSummary.conditionCounts,
+      };
+    }
+    if (currentDistrict.id === 'ballari' && assets.length > 0) {
+      return calculateDrainageSummary(assets);
+    }
+    return {
+      totalAssets: dbSummary?.totalAssets || 0,
+      reportedIssues: dbSummary?.reportedIssues || 0,
+      awaitingVerification: dbSummary?.awaitingVerification || 0,
+      underMaintenance: dbSummary?.underMaintenance || 0,
+      functionalAssets: dbSummary?.functionalAssets || 0,
+      totalLengthKm: dbSummary?.totalLengthKm || 0,
+      networkBreakdown: { majorDrains: 0, secondaryDrains: 0, stormWaterDrains: 0, culverts: 0, outfallPoints: 0 },
+      averageUtilizationPct: null as any,
+      utilizationBuckets: { greaterThan90: 0, between70And90: 0, between50And70: 0, lessThan50: 0, unmonitored: dbSummary?.totalAssets || 0 },
+      conditionCounts: { good: 0, moderate: 0, blockedCritical: dbSummary?.reportedIssues || 0, underMaintenance: 0, unknown: dbSummary?.totalAssets || 0 },
+    };
+  }, [dbSummary, assets, currentDistrict]);
 
-  // Summary Metrics
-  const summary: DrainageSummary = useMemo(() => calculateDrainageSummary(assets), [assets]);
+  const isInsufficientData = useMemo(() => {
+    if (dbSummary) return Boolean(dbSummary.insufficient_data);
+    return false;
+  }, [dbSummary]);
 
   // Advisories List
-  const [advisories, setAdvisories] = useState<DrainageAdvisoryAlert[]>(DRAINAGE_ADVISORIES_DEFAULT);
+  const [advisories, setAdvisories] = useState<DrainageAdvisoryAlert[]>([]);
 
   // Map Filter: 'All' | 'Functional' | 'Under Maintenance' | 'Reported Issue'
   const [mapFilter, setMapFilter] = useState<'All' | 'Functional' | 'Under Maintenance' | 'Reported Issue'>('All');
@@ -152,44 +185,158 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
   // Live Weather from Open-Meteo
   const [weatherData, setWeatherData] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
+
+  const handleImportOnDemand = async () => {
+    try {
+      setIsImporting(true);
+      setImportNotice(null);
+      const res = await api.importDrainageDistrict(currentDistrict.id);
+      if (res?.success) {
+        setImportNotice(`Successfully imported ${res.importedCount} features for ${currentDistrict.displayName}!`);
+        fetchLiveData();
+      } else {
+        setImportNotice(res?.message || 'Import failed. Resource unavailable.');
+      }
+    } catch (err: any) {
+      setImportNotice(`Import error: ${err.message}`);
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   // Map Refs
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
 
-  // Fetch Live Weather & Drainage Advisory
+  // Fetch Live Weather & Drainage Advisory & Drainage Network Summary
   const fetchLiveData = () => {
     setIsRefreshing(true);
     Promise.allSettled([
       api.getDistrictWeather(currentDistrict.displayName, true),
       api.getLiveDrainageAdvisory(currentDistrict.id, true),
-    ]).then(([wRes, advRes]) => {
+      api.getDistrictIncidents(currentDistrict.id).catch(() => null),
+      api.getDrainageSummary(currentDistrict.id).catch(() => null),
+      api.getDrainageAssets(currentDistrict.id, 25).catch(() => null),
+    ]).then(([wRes, advRes, incRes, sumRes, assetsRes]) => {
       if (wRes.status === 'fulfilled' && wRes.value) {
         setWeatherData(wRes.value);
       }
+
+      if (sumRes.status === 'fulfilled' && sumRes.value?.success) {
+        setDbSummary(sumRes.value);
+      }
+
+      if (assetsRes.status === 'fulfilled' && assetsRes.value?.assets?.length > 0) {
+        setAssets(assetsRes.value.assets);
+      } else if (currentDistrict.id === 'ballari') {
+        setAssets(BALLARI_DRAINAGE_ASSETS);
+      } else {
+        setAssets([]);
+      }
+
+      const newAdvisories: DrainageAdvisoryAlert[] = [];
+      const now = new Date();
+      const ts = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+      const dateStr = now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+
+      // 1. Live weather-based advisory from backend
       if (advRes.status === 'fulfilled' && advRes.value?.data) {
         const liveAdv = advRes.value.data;
-        if (liveAdv.guidanceHeadline) {
-          setAdvisories((prev) => [
-            {
-              id: `ADV-LIVE-${Date.now()}`,
-              type: liveAdv.priority?.includes('Critical') ? 'critical' : 'warning',
-              title: `${liveAdv.guidanceHeadline} (${liveAdv.diagnosis.substring(0, 75)}...)`,
-              timestamp: 'Just now',
-              timeAgo: 'Live model',
-            },
-            ...prev.slice(0, 3),
-          ]);
+        if (liveAdv.insufficient_data) {
+          newAdvisories.push({
+            id: `ADV-INSUFFICIENT-${currentDistrict.id}`,
+            type: 'info',
+            title: liveAdv.insufficientDataReason || `No government-verified stormwater drain network (KML) currently imported for ${currentDistrict.displayName}. OpenCity resource is available for on-demand import.`,
+            timestamp: `${dateStr}, ${ts}`,
+            timeAgo: 'Ground Survey Missing',
+          });
+        } else if (liveAdv.guidanceHeadline) {
+          const isCritical = liveAdv.priority?.includes('Critical') || liveAdv.priority?.includes('1');
+          const isWarning  = liveAdv.priority?.includes('2') || liveAdv.riskCategory?.includes('Moderate') || liveAdv.riskCategory?.includes('Severe');
+          newAdvisories.push({
+            id: `ADV-LIVE-${currentDistrict.id}`,
+            type: isCritical ? 'critical' : isWarning ? 'warning' : 'info',
+            title: `${liveAdv.guidanceHeadline} — ${currentDistrict.displayName}`,
+            timestamp: `${dateStr}, ${ts}`,
+            timeAgo: `${currentDistrict.displayName} · Open-Meteo NWP`,
+          });
+        }
+
+        // Show forecast numbers as a second item if meaningful
+        const rain24h = liveAdv.metrics?.forecastRainfall24hMm ?? liveAdv.inputValues?.forecast24hPrecipMm;
+        if (typeof rain24h === 'number' && rain24h > 0) {
+          newAdvisories.push({
+            id: `ADV-RAIN-${currentDistrict.id}`,
+            type: rain24h >= 60 ? 'critical' : rain24h >= 25 ? 'warning' : 'info',
+            title: `Forecast: ${rain24h.toFixed(1)} mm / 24 h · Peak ${(liveAdv.metrics?.peakHourlyForecastMm ?? 0).toFixed(1)} mm/h — ${currentDistrict.displayName}`,
+            timestamp: liveAdv.dataTimestamp ? new Date(liveAdv.dataTimestamp).toLocaleString('en-IN') : dateStr,
+            timeAgo: 'NWP model output — not a ground observation',
+          });
+        }
+
+        // Drainage network evidence
+        if (liveAdv.drainageEvidence && typeof liveAdv.drainageEvidence.totalLines === 'number' && liveAdv.drainageEvidence.totalLines > 0) {
+          const de = liveAdv.drainageEvidence;
+          newAdvisories.push({
+            id: `ADV-NET-${currentDistrict.id}`,
+            type: 'info',
+            title: `Drainage Network: ${de.totalLines.toLocaleString()} mapped channels (${de.totalLengthKm} km) · ${de.source}`,
+            timestamp: dateStr,
+            timeAgo: 'OpenCity.in / Government of Karnataka',
+          });
         }
       }
+
+      // 2. District incidents → real evidence items
+      const incData = incRes.status === 'fulfilled' ? incRes.value : null;
+      const incidents: any[] = incData?.incidents || [];
+      const districtInc = incidents.filter((inc: any) =>
+        (inc.district_id || '').toLowerCase() === currentDistrict.id.toLowerCase()
+      );
+
+      districtInc.slice(0, 3).forEach((inc: any) => {
+        const isSevere = inc.severity === 'Severe';
+        const isHigh   = inc.severity === 'High';
+        newAdvisories.push({
+          id: `ADV-INC-${inc.id || Math.random()}`,
+          type: isSevere ? 'critical' : isHigh ? 'warning' : 'info',
+          title: `${inc.severity || 'Unclassified'} waterlogging: ${inc.landmark || inc.location || 'Location unrecorded'} — ${inc.status || 'UNVERIFIED'}`,
+          timestamp: inc.created_at ? new Date(inc.created_at).toLocaleString('en-IN') : dateStr,
+          timeAgo: inc.source_type === 'FIELD_SURVEY' ? 'Field survey (verified)' : 'Citizen report (unverified)',
+        });
+      });
+
+      // 3. If nothing found for this district, say so honestly
+      if (newAdvisories.length === 0) {
+        newAdvisories.push({
+          id: `ADV-NODATA-${currentDistrict.id}`,
+          type: 'info',
+          title: `Insufficient district-specific data for ${currentDistrict.displayName}. No verified incidents or live weather data available.`,
+          timestamp: dateStr,
+          timeAgo: 'No connected source',
+        });
+      }
+
+      setAdvisories(newAdvisories);
       setIsRefreshing(false);
     });
   };
 
+  // Reset advisories to loading state on district change, then fetch fresh
   useEffect(() => {
+    setAdvisories([{
+      id: 'ADV-LOADING',
+      type: 'info',
+      title: `Loading advisory for ${currentDistrict.displayName}…`,
+      timestamp: '',
+      timeAgo: '',
+    }]);
     fetchLiveData();
   }, [currentDistrict]);
+
 
   // Filtered Assets for Map
   const filteredMapAssets = useMemo(() => {
@@ -428,6 +575,49 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
         </div>
       </div>
 
+      {/* ── Insufficient District Data Alert Banner ── */}
+      {isInsufficientData && (
+        <div className="flex flex-col gap-2.5 rounded-2xl border border-amber-200 bg-amber-50/90 p-4 text-amber-900 shadow-xs dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={20} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="flex-1 text-xs">
+              <div className="font-bold text-sm text-amber-950 dark:text-amber-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span>Insufficient District-Specific Drainage Network</span>
+                  <span className="rounded-full bg-amber-200/80 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-900 dark:text-amber-300">
+                    {currentDistrict.displayName}
+                  </span>
+                </div>
+                {dbSummary?.can_import_on_demand && (
+                  <button
+                    type="button"
+                    onClick={handleImportOnDemand}
+                    disabled={isImporting}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1 text-xs font-semibold text-white shadow-xs transition hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    {isImporting ? <RefreshCw size={12} className="animate-spin" /> : <Layers size={12} />}
+                    {isImporting ? 'Importing from OpenCity...' : 'Import District Network'}
+                  </button>
+                )}
+              </div>
+              <p className="mt-1 leading-relaxed text-slate-700 dark:text-slate-300">
+                {dbSummary?.notice || `Government-verified stormwater drain network not yet imported into local database for ${currentDistrict.displayName}. Absence of records reflects data availability, not zero physical drains on the ground.`}
+              </p>
+              {dbSummary?.can_import_on_demand && (
+                <div className="mt-1.5 flex items-center gap-2 text-[11px] text-amber-800 dark:text-amber-300 font-medium">
+                  <span>Resource available: {dbSummary?.resource_title || 'OpenCity Karnataka Drainage Map'}</span>
+                </div>
+              )}
+              {importNotice && (
+                <div className="mt-2 rounded-lg bg-white/80 p-2 text-xs font-medium text-slate-800 dark:bg-slate-900/80 dark:text-slate-100 border border-amber-300 dark:border-amber-700">
+                  {importNotice}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 2. Row 1: 5 Top Summary Stat Cards ── */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {/* Card 1: Total Drainage Assets */}
@@ -616,12 +806,19 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                {keyDrains.map((d, i) => (
-                  <tr
-                    key={d.id}
-                    onClick={() => setSelectedAsset(d)}
-                    className="cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/50"
-                  >
+                {keyDrains.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-6 text-center text-slate-400 text-xs">
+                      No mapped drainage assets recorded for {currentDistrict.displayName}.
+                    </td>
+                  </tr>
+                ) : (
+                  keyDrains.map((d, i) => (
+                    <tr
+                      key={d.id}
+                      onClick={() => setSelectedAsset(d)}
+                      className="cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/50"
+                    >
                     <td className="py-1.5 text-slate-400 text-[11px]">{i + 1}</td>
                     <td className="py-1.5 font-medium text-slate-900 dark:text-white truncate max-w-[130px]">
                       {d.name}
@@ -655,7 +852,7 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
                       )}
                     </td>
                   </tr>
-                ))}
+                )))}
               </tbody>
             </table>
           </div>
@@ -852,47 +1049,55 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                {assets.slice(0, 5).map((a, i) => (
-                  <tr
-                    key={a.id}
-                    onClick={() => setSelectedAsset(a)}
-                    className="cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/50"
-                  >
-                    <td className="py-2 text-slate-400 text-[11px]">{i + 1}</td>
-                    <td className="py-2 font-medium text-slate-900 dark:text-white truncate max-w-[120px]">
-                      {a.name}
-                    </td>
-                    <td className="py-2">
-                      <span
-                        className={`rounded-sm px-1.5 py-0.5 text-[10px] font-semibold ${
-                          a.condition === 'Good'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                            : a.condition === 'Moderate'
-                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                            : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
-                        }`}
-                      >
-                        {a.condition.split(' ')[0]}
-                      </span>
-                    </td>
-                    <td className="py-2 text-slate-500 text-[11px] whitespace-nowrap">
-                      {a.lastInspectionDate}
-                    </td>
-                    <td className="py-2">
-                      <span
-                        className={`rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${
-                          a.inspectionAction === 'No action'
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                            : a.inspectionAction.includes('Scheduled') || a.inspectionAction.includes('Cleaning')
-                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
-                            : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
-                        }`}
-                      >
-                        {a.inspectionAction}
-                      </span>
+                {assets.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-slate-400 text-xs">
+                      No inspection reports on record for {currentDistrict.displayName}.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  assets.slice(0, 5).map((a, i) => (
+                    <tr
+                      key={a.id}
+                      onClick={() => setSelectedAsset(a)}
+                      className="cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/50"
+                    >
+                      <td className="py-2 text-slate-400 text-[11px]">{i + 1}</td>
+                      <td className="py-2 font-medium text-slate-900 dark:text-white truncate max-w-[120px]">
+                        {a.name}
+                      </td>
+                      <td className="py-2">
+                        <span
+                          className={`rounded-sm px-1.5 py-0.5 text-[10px] font-semibold ${
+                            a.condition === 'Good'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : a.condition === 'Moderate'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                              : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
+                          }`}
+                        >
+                          {a.condition.split(' ')[0]}
+                        </span>
+                      </td>
+                      <td className="py-2 text-slate-500 text-[11px] whitespace-nowrap">
+                        {a.lastInspectionDate}
+                      </td>
+                      <td className="py-2">
+                        <span
+                          className={`rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${
+                            a.inspectionAction === 'No action'
+                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                              : a.inspectionAction.includes('Scheduled') || a.inspectionAction.includes('Cleaning')
+                              ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                              : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                          }`}
+                        >
+                          {a.inspectionAction}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -926,49 +1131,57 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                {assets
-                  .filter((a) => a.maintenanceTask)
-                  .slice(0, 5)
-                  .map((a, i) => (
-                    <tr
-                      key={a.id}
-                      onClick={() => toggleMaintenanceStatus(a.maintenanceTask?.taskId)}
-                      className="cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/50"
-                      title="Click to advance status"
-                    >
-                      <td className="py-2 text-slate-400 text-[11px]">{i + 1}</td>
-                      <td className="py-2 font-medium text-slate-900 dark:text-white truncate max-w-[130px]">
-                        {a.maintenanceTask?.taskTitle}
-                      </td>
-                      <td className="py-2">
-                        <span
-                          className={`rounded-sm px-1.5 py-0.5 text-[10px] font-semibold ${
-                            a.maintenanceTask?.status === 'In Progress'
-                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                              : a.maintenanceTask?.status === 'Completed'
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                              : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
-                          }`}
-                        >
-                          {a.maintenanceTask?.status}
-                        </span>
-                      </td>
-                      <td className="py-2">
-                        <span
-                          className={`rounded-sm px-1.5 py-0.5 text-[10px] font-bold ${
-                            a.maintenanceTask?.priority === 'High'
-                              ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300'
-                              : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-                          }`}
-                        >
-                          {a.maintenanceTask?.priority}
-                        </span>
-                      </td>
-                      <td className="py-2 text-slate-500 text-[11px] whitespace-nowrap">
-                        {a.maintenanceTask?.dueDate}
-                      </td>
-                    </tr>
-                  ))}
+                {assets.filter((a) => a.maintenanceTask).length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-slate-400 text-xs">
+                      No scheduled maintenance actions on record for {currentDistrict.displayName}.
+                    </td>
+                  </tr>
+                ) : (
+                  assets
+                    .filter((a) => a.maintenanceTask)
+                    .slice(0, 5)
+                    .map((a, i) => (
+                      <tr
+                        key={a.id}
+                        onClick={() => toggleMaintenanceStatus(a.maintenanceTask?.taskId)}
+                        className="cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/50"
+                        title="Click to advance status"
+                      >
+                        <td className="py-2 text-slate-400 text-[11px]">{i + 1}</td>
+                        <td className="py-2 font-medium text-slate-900 dark:text-white truncate max-w-[130px]">
+                          {a.maintenanceTask?.taskTitle}
+                        </td>
+                        <td className="py-2">
+                          <span
+                            className={`rounded-sm px-1.5 py-0.5 text-[10px] font-semibold ${
+                              a.maintenanceTask?.status === 'In Progress'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                : a.maintenanceTask?.status === 'Completed'
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+                            }`}
+                          >
+                            {a.maintenanceTask?.status}
+                          </span>
+                        </td>
+                        <td className="py-2">
+                          <span
+                            className={`rounded-sm px-1.5 py-0.5 text-[10px] font-bold ${
+                              a.maintenanceTask?.priority === 'High'
+                                ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300'
+                                : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                            }`}
+                          >
+                            {a.maintenanceTask?.priority}
+                          </span>
+                        </td>
+                        <td className="py-2 text-slate-500 text-[11px] whitespace-nowrap">
+                          {a.maintenanceTask?.dueDate}
+                        </td>
+                      </tr>
+                    ))
+                )}
               </tbody>
             </table>
           </div>
@@ -1051,37 +1264,45 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                {keyDrains.map((d, i) => (
-                  <tr
-                    key={d.id}
-                    onClick={() => setSelectedAsset(d)}
-                    className="cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/50"
-                  >
-                    <td className="py-2 text-slate-400 text-[11px]">{i + 1}</td>
-                    <td className="py-2 font-medium text-slate-900 dark:text-white truncate max-w-[130px]">
-                      {d.name}
-                    </td>
-                    <td className="py-2 text-slate-500 text-[11px]">
-                      {d.assetType}
-                    </td>
-                    <td className="py-2">
-                      <span
-                        className={`rounded-sm px-1.5 py-0.5 text-[10px] font-semibold ${
-                          d.status === 'Functional'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                            : d.status === 'Under Maintenance'
-                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                            : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
-                        }`}
-                      >
-                        {d.status === 'Functional' ? 'Normal' : d.status === 'Under Maintenance' ? 'Moderate' : 'High'}
-                      </span>
-                    </td>
-                    <td className="py-2 font-semibold text-slate-700 dark:text-slate-200">
-                      {d.currentWaterLevelM} m
+                {keyDrains.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-slate-400 text-xs">
+                      No mapped drainage locations recorded for {currentDistrict.displayName}.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  keyDrains.map((d, i) => (
+                    <tr
+                      key={d.id}
+                      onClick={() => setSelectedAsset(d)}
+                      className="cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/50"
+                    >
+                      <td className="py-2 text-slate-400 text-[11px]">{i + 1}</td>
+                      <td className="py-2 font-medium text-slate-900 dark:text-white truncate max-w-[130px]">
+                        {d.name}
+                      </td>
+                      <td className="py-2 text-slate-500 text-[11px]">
+                        {d.assetType}
+                      </td>
+                      <td className="py-2">
+                        <span
+                          className={`rounded-sm px-1.5 py-0.5 text-[10px] font-semibold ${
+                            d.status === 'Functional'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : d.status === 'Under Maintenance'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                              : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
+                          }`}
+                        >
+                          {d.status === 'Functional' ? 'Normal' : d.status === 'Under Maintenance' ? 'Moderate' : 'High'}
+                        </span>
+                      </td>
+                      <td className="py-2 font-semibold text-slate-700 dark:text-slate-200">
+                        {d.currentWaterLevelM} m
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

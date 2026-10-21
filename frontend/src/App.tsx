@@ -62,7 +62,7 @@ export function App() {
 
   // Study Areas State
   const [studyAreas, setStudyAreas] = useState<StudyArea[]>([]);
-  const [selectedAreaId, setSelectedAreaId] = useState<string>('ballari');
+  const [selectedAreaId, setSelectedAreaId] = useState<string>('bengaluru_urban');
   const [currentArea, setCurrentArea] = useState<StudyArea | null>(null);
 
   // Analysis Parameters — always start with today as post-event, 7 days ago as pre-event
@@ -93,7 +93,7 @@ export function App() {
   const areaRequestSequence = useRef(0);
 
   // Cross-Page Selected District
-  const [selectedDistrict, setSelectedDistrict] = useState<string>('Ballari');
+  const [selectedDistrict, setSelectedDistrict] = useState<string>('Bengaluru Urban');
   const [selectedDate, setSelectedDate] = useState<string>(getTodayInKolkata);
   const [highlightDrainageActionId, setHighlightDrainageActionId] = useState<string | null>(null);
   const [highlightDrainageLocation, setHighlightDrainageLocation] = useState<string | null>(null);
@@ -319,6 +319,7 @@ export function App() {
         theme={theme}
         setTheme={setTheme}
         notificationCount={liveAlerts.length}
+        alerts={liveAlerts}
         onOpenEoc={() => setIsEmergencyOpsOpen(true)}
         onOpenSos={() => setIsCitizenLifelineOpen(true)}
         onOpenModels={() => setIsModelOpen(true)}

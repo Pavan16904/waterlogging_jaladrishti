@@ -272,6 +272,26 @@ export interface LiveDrainageAdvisory {
   providerStatus?: string;
   lastUpdated?: string;
   backendRetrievedAt?: string;
+  is_district_specific?: boolean;
+  insufficient_data?: boolean;
+  insufficientDataReason?: string;
+  drainageEvidence?: {
+    totalLines: number;
+    totalLengthKm: number;
+    source: string;
+    license?: string;
+  } | null;
+  pipelineEvidence?: {
+    conditionReportsTotal: number;
+    verifiedBlockages: number;
+    reportedBlockages: number;
+  };
+  incidentEvidence?: {
+    totalActive: number;
+    severeCount: number;
+    highCount: number;
+    source: string;
+  };
 }
 
 export interface LiveAlert {

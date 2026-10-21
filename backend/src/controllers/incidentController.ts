@@ -1,26 +1,106 @@
 import { Request, Response } from 'express';
 import { query } from '../db/index.js';
+import { canonicalDistrictId } from '../utils/districtUtils.js';
 
 export async function getIncidents(req: Request, res: Response) {
   try {
-    const { district_id } = req.query;
-    let sql = 'SELECT * FROM incidents';
+    const { district_id, severity, event_type, status, include_rejected, has_coords, date_from, date_to } = req.query;
+    let sql = 'SELECT * FROM incidents WHERE 1=1';
     const params: any[] = [];
 
     if (district_id && typeof district_id === 'string' && district_id.trim()) {
-      sql += ' WHERE district_id = ?';
-      params.push(district_id.trim().toLowerCase());
+      const d = district_id.trim().toLowerCase();
+      if (d !== 'all' && d !== 'all_karnataka' && d !== 'karnataka') {
+        const canon = canonicalDistrictId(d);
+        sql += ' AND (district_id = ? OR district_id = ?)';
+        params.push(canon, d);
+      }
+    }
+
+    // Severity filter with normalization (Critical -> Severe, Medium -> Moderate, Low -> Minor)
+    if (severity && typeof severity === 'string' && severity.trim() && severity.toUpperCase() !== 'ALL') {
+      const s = severity.trim().toLowerCase();
+      let normalized = 'Moderate';
+      if (s === 'severe' || s === 'critical') normalized = 'Severe';
+      else if (s === 'high') normalized = 'High';
+      else if (s === 'moderate' || s === 'medium') normalized = 'Moderate';
+      else if (s === 'minor' || s === 'low') normalized = 'Minor';
+      sql += ' AND LOWER(severity) = ?';
+      params.push(normalized.toLowerCase());
+    }
+
+    // Event type filter
+    if (event_type && typeof event_type === 'string' && event_type.trim() && event_type.toUpperCase() !== 'ALL') {
+      sql += ' AND LOWER(event_type) = ?';
+      params.push(event_type.trim().toLowerCase());
+    }
+
+    // Status filter
+    if (status && typeof status === 'string' && status.trim() && status.toUpperCase() !== 'ALL') {
+      const st = status.trim().toUpperCase();
+      if (st === 'ACTIVE') {
+        sql += " AND status IN ('VERIFIED', 'SUBMITTED_UNVERIFIED', 'IN_PROGRESS')";
+      } else {
+        sql += ' AND status = ?';
+        params.push(st);
+      }
+    } else if (include_rejected !== 'true') {
+      // Exclude rejected records by default from active listing, but keep in history
+      sql += " AND status != 'REJECTED'";
+    }
+
+    // Has coordinates filter
+    if (has_coords === 'true') {
+      sql += ' AND lat IS NOT NULL AND lng IS NOT NULL';
+    } else if (has_coords === 'false') {
+      sql += ' AND (lat IS NULL OR lng IS NULL)';
+    }
+
+    // Date range filter
+    if (date_from && typeof date_from === 'string' && date_from.trim()) {
+      sql += ' AND created_at >= ?';
+      params.push(date_from.trim());
+    }
+    if (date_to && typeof date_to === 'string' && date_to.trim()) {
+      sql += ' AND created_at <= ?';
+      params.push(date_to.trim());
     }
 
     sql += ' ORDER BY created_at DESC';
 
     const result = await query(sql, params);
+    const rows = result.rows || [];
+
+    // Compute empirical counts
+    const mapped = rows.filter((r: any) => typeof r.lat === 'number' && typeof r.lng === 'number' && !isNaN(r.lat) && !isNaN(r.lng));
+    const unmapped = rows.filter((r: any) => r.lat === null || r.lng === null || isNaN(r.lat) || isNaN(r.lng));
+
+    const by_severity = {
+      severe: rows.filter((r: any) => (r.severity || '').toLowerCase() === 'severe' || (r.severity || '').toLowerCase() === 'critical').length,
+      high: rows.filter((r: any) => (r.severity || '').toLowerCase() === 'high').length,
+      moderate: rows.filter((r: any) => (r.severity || '').toLowerCase() === 'moderate' || (r.severity || '').toLowerCase() === 'medium').length,
+      minor: rows.filter((r: any) => (r.severity || '').toLowerCase() === 'minor' || (r.severity || '').toLowerCase() === 'low').length,
+    };
+
+    const by_status = {
+      verified: rows.filter((r: any) => r.status === 'VERIFIED').length,
+      pending: rows.filter((r: any) => r.status === 'SUBMITTED_UNVERIFIED').length,
+      in_progress: rows.filter((r: any) => r.status === 'IN_PROGRESS').length,
+      resolved: rows.filter((r: any) => r.status === 'RESOLVED').length,
+      historical: rows.filter((r: any) => r.status === 'HISTORICAL').length,
+      rejected: rows.filter((r: any) => r.status === 'REJECTED').length,
+    };
+
     return res.json({
       success: true,
-      count: result.rows.length,
-      incidents: result.rows,
+      count: rows.length,
+      mapped_count: mapped.length,
+      unmapped_count: unmapped.length,
+      by_severity,
+      by_status,
+      incidents: rows,
       district_id: district_id || null,
-      source: 'JalaDrishti Verified Incidents & Persistent Citizen SOS Store',
+      source: 'JalaDrishti Verified Incidents & Shared Drainage Repository',
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {
@@ -50,7 +130,10 @@ export async function createIncident(req: Request, res: Response) {
       lat,
       lng,
       severity,
-      image_url
+      image_url,
+      event_type,
+      drainage_asset_id,
+      source_type
     } = req.body;
 
     if (!district_id || !landmark) {
@@ -67,8 +150,10 @@ export async function createIncident(req: Request, res: Response) {
       INSERT INTO incidents (
         id, district_id, district_name, reporter_name, reporter_phone,
         landmark, water_depth, urgency, status, assigned_agency,
-        recommended_action, lat, lng, severity, image_url, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        recommended_action, lat, lng, severity, image_url,
+        event_type, drainage_asset_id, source_type,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const params = [
@@ -83,10 +168,13 @@ export async function createIncident(req: Request, res: Response) {
       status || 'SUBMITTED_UNVERIFIED',
       assigned_agency || 'KSDMA / District Control Room',
       recommended_action || 'Inspect drainage outfall and clear surface blockage',
-      typeof lat === 'number' ? lat : null,
-      typeof lng === 'number' ? lng : null,
+      typeof lat === 'number' && !isNaN(lat) ? lat : null,
+      typeof lng === 'number' && !isNaN(lng) ? lng : null,
       severity || 'Moderate',
       image_url || null,
+      event_type || 'Road waterlogging',
+      drainage_asset_id || null,
+      source_type || 'CITIZEN_REPORT',
       now,
       now
     ];
@@ -104,10 +192,13 @@ export async function createIncident(req: Request, res: Response) {
         water_depth,
         urgency,
         status: status || 'SUBMITTED_UNVERIFIED',
-        lat,
-        lng,
+        lat: typeof lat === 'number' && !isNaN(lat) ? lat : null,
+        lng: typeof lng === 'number' && !isNaN(lng) ? lng : null,
         severity: severity || 'Moderate',
         image_url: image_url || null,
+        event_type: event_type || 'Road waterlogging',
+        drainage_asset_id: drainage_asset_id || null,
+        source_type: source_type || 'CITIZEN_REPORT',
         created_at: now
       }
     });

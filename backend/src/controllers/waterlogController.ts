@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { query } from '../db/index.js';
 import { seedWaterlogHexScoresIfEmpty } from '../services/waterlogService.js';
+import { canonicalDistrictId } from '../utils/districtUtils.js';
 
 /**
  * GET /api/waterlog/hexes
@@ -18,11 +19,14 @@ export async function getWaterlogHexes(req: Request, res: Response): Promise<voi
     let validTime = (req.query.valid_time as string) || '';
     const resolution = req.query.res ? parseInt(req.query.res as string, 10) : 7;
     const bboxStr = req.query.bbox as string;
-    const districtId = req.query.district_id as string;
+    const rawDist = (req.query.district_id as string) || (req.query.district as string);
+    const districtId = rawDist ? canonicalDistrictId(rawDist) : undefined;
 
-    // If no valid_time supplied, pick the latest valid_time from the table
+    // If no valid_time supplied, pick the latest valid_time scoped to this district (or global)
     if (!validTime) {
-      const latestRes = await query('SELECT MAX(valid_time) as max_vt FROM waterlog_hex_scores');
+      const latestRes = districtId
+        ? await query('SELECT MAX(valid_time) as max_vt FROM waterlog_hex_scores WHERE district_id = ?', [districtId])
+        : await query('SELECT MAX(valid_time) as max_vt FROM waterlog_hex_scores');
       validTime = latestRes.rows[0]?.max_vt || '';
     }
 

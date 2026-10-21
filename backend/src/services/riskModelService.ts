@@ -314,10 +314,10 @@ export class RiskModelService {
     const forecastHourSteps = [0, 6, 12, 18, 24, 36, 48, 72];
     const validTimestamps = forecastHourSteps.map((h) => new Date(baseEpochHour + (h * 3600000)).toISOString());
 
-    // Begin database transaction for atomic batch insertion
-    await query('BEGIN');
-    try {
-      for (const districtId of districtIds) {
+    // Per-district transactions so SQLite write lock releases between districts
+    const failedDistricts: string[] = [];
+    for (const districtId of districtIds) {
+      try {
         // 1. Fetch district weather snapshot
         const snapRes = await query(
           'SELECT payload, fetched_at FROM weather_snapshots WHERE district_id = $1 ORDER BY fetched_at DESC LIMIT 1',
@@ -339,83 +339,92 @@ export class RiskModelService {
         const districtScores: number[] = [];
         const districtConfidences: number[] = [];
 
-        // 3. For each valid time step
-        for (let tIdx = 0; tIdx < validTimestamps.length; tIdx++) {
-          const validTime = validTimestamps[tIdx];
-          const hourOffset = forecastHourSteps[tIdx];
+        await query('BEGIN');
+        try {
+          // 3. For each valid time step
+          for (let tIdx = 0; tIdx < validTimestamps.length; tIdx++) {
+            const validTime = validTimestamps[tIdx];
+            const hourOffset = forecastHourSteps[tIdx];
 
-          // Compute precipitation from weather payload
-          let rainfall3dMm = 25.0; // conservative default if snapshot empty
-          if (payload && payload.hourly && Array.isArray(payload.hourly.precipitation)) {
-            const startHour = Math.max(0, hourOffset - 48);
-            const endHour = Math.min(payload.hourly.precipitation.length, hourOffset + 24);
-            const slice = payload.hourly.precipitation.slice(startHour, endHour);
-            rainfall3dMm = slice.reduce((a: number, b: number) => a + (b || 0), 0);
+            // Compute precipitation from weather payload
+            let rainfall3dMm = 25.0; // conservative default if snapshot empty
+            if (payload && payload.hourly && Array.isArray(payload.hourly.precipitation)) {
+              const startHour = Math.max(0, hourOffset - 48);
+              const endHour = Math.min(payload.hourly.precipitation.length, hourOffset + 24);
+              const slice = payload.hourly.precipitation.slice(startHour, endHour);
+              rainfall3dMm = slice.reduce((a: number, b: number) => a + (b || 0), 0);
+            }
+
+            // 4. For each hex in this district
+            for (const hex of hexes) {
+              const drainageClass = hex.drainage_proxy !== null
+                ? Math.max(1, Math.min(5, Math.round(1 + hex.drainage_proxy * 4)))
+                : 3;
+              const croplandFrac = hex.is_cropland ? 0.85 : 0.05;
+
+              const computed = this.computeHexRiskScore(
+                {
+                  rainfall_3d_mm: rainfall3dMm,
+                  rainfall_observed_3d_mm: null, // Unconfigured in Phase 1
+                  twi: hex.twi,
+                  slope_deg: hex.slope_deg,
+                  drainage_class: drainageClass,
+                  whc_mm: hex.water_holding_capacity,
+                  cropland_fraction: croplandFrac,
+                  forecast_age_minutes: forecastAgeMinutes,
+                  ndwi_prev: null,
+                },
+                config,
+                config.version,
+                hash
+              );
+
+              // Tally metrics
+              classCounts[computed.risk_class as keyof typeof classCounts]++;
+              districtScores.push(computed.risk_score);
+              districtConfidences.push(computed.confidence);
+              allConfidences.push(computed.confidence);
+              computed.components.penalties.forEach((p: string) => allPenaltiesSet.add(p));
+
+              // Write to waterlog_hex_scores idempotently
+              await query(
+                `INSERT INTO waterlog_hex_scores (
+                   h3_index, resolution, district_id, valid_time, fetched_at,
+                   risk_score, risk_class, confidence, components, source, lat, lng, run_id
+                 ) VALUES ($1, 7, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                 ON CONFLICT (h3_index, valid_time) DO UPDATE SET
+                   risk_score = EXCLUDED.risk_score,
+                   risk_class = EXCLUDED.risk_class,
+                   confidence = EXCLUDED.confidence,
+                   components = EXCLUDED.components,
+                   source = EXCLUDED.source,
+                   fetched_at = EXCLUDED.fetched_at,
+                   run_id = EXCLUDED.run_id`,
+                [
+                  hex.h3_index,
+                  districtId,
+                  validTime,
+                  nowIso,
+                  computed.risk_score,
+                  computed.risk_class,
+                  computed.confidence,
+                  computed.components,
+                  computed.source,
+                  hex.lat,
+                  hex.lng,
+                  runId,
+                ]
+              );
+
+              totalRowsInserted++;
+            }
           }
-
-          // 4. For each hex in this district
-          for (const hex of hexes) {
-            const drainageClass = hex.drainage_proxy !== null
-              ? Math.max(1, Math.min(5, Math.round(1 + hex.drainage_proxy * 4)))
-              : 3;
-            const croplandFrac = hex.is_cropland ? 0.85 : 0.05;
-
-            const computed = this.computeHexRiskScore(
-              {
-                rainfall_3d_mm: rainfall3dMm,
-                rainfall_observed_3d_mm: null, // Unconfigured in Phase 1
-                twi: hex.twi,
-                slope_deg: hex.slope_deg,
-                drainage_class: drainageClass,
-                whc_mm: hex.water_holding_capacity,
-                cropland_fraction: croplandFrac,
-                forecast_age_minutes: forecastAgeMinutes,
-                ndwi_prev: null,
-              },
-              config,
-              config.version,
-              hash
-            );
-
-            // Tally metrics
-            classCounts[computed.risk_class as keyof typeof classCounts]++;
-            districtScores.push(computed.risk_score);
-            districtConfidences.push(computed.confidence);
-            allConfidences.push(computed.confidence);
-            computed.components.penalties.forEach((p: string) => allPenaltiesSet.add(p));
-
-            // Write to waterlog_hex_scores idempotently
-            await query(
-              `INSERT INTO waterlog_hex_scores (
-                 h3_index, resolution, district_id, valid_time, fetched_at,
-                 risk_score, risk_class, confidence, components, source, lat, lng, run_id
-               ) VALUES ($1, 7, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-               ON CONFLICT (h3_index, valid_time) DO UPDATE SET
-                 risk_score = EXCLUDED.risk_score,
-                 risk_class = EXCLUDED.risk_class,
-                 confidence = EXCLUDED.confidence,
-                 components = EXCLUDED.components,
-                 source = EXCLUDED.source,
-                 fetched_at = EXCLUDED.fetched_at,
-                 run_id = EXCLUDED.run_id`,
-              [
-                hex.h3_index,
-                districtId,
-                validTime,
-                nowIso,
-                computed.risk_score,
-                computed.risk_class,
-                computed.confidence,
-                computed.components,
-                computed.source,
-                hex.lat,
-                hex.lng,
-                runId,
-              ]
-            );
-
-            totalRowsInserted++;
-          }
+          await query('COMMIT');
+        } catch (distErr: any) {
+          await query('ROLLBACK');
+          failedDistricts.push(districtId);
+          console.warn(`[!] Risk model: district ${districtId} failed, continuing:`, distErr.message);
+          continue;
         }
 
         // District summary metrics
@@ -430,20 +439,38 @@ export class RiskModelService {
           median_confidence: medConf,
           flagged_low_confidence: medConf < 0.6,
         });
-      }
 
-      // Record audit record in risk_model_runs
+        // Yield to event loop between districts so HTTP requests are served immediately
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      } catch (distErr: any) {
+        failedDistricts.push(districtId);
+        console.warn(`[!] Risk model: district ${districtId} skipped:`, distErr.message);
+      }
+    }
+
+    // Record audit record in risk_model_runs
+    try {
       await query(
         `INSERT INTO risk_model_runs (run_id, created_at, weights_version, config_hash, input_status, row_count)
          VALUES ($1, $2, $3, $4, $5, $6)`,
         [runId, nowIso, config.version, hash, inputStatus, totalRowsInserted]
       );
 
-      await query('COMMIT');
-    } catch (err: any) {
-      await query('ROLLBACK');
-      console.error('[-] Risk model execution failed:', err.message);
-      throw err;
+      // Prune obsolete runs older than latest 2 runs to prevent unbounded DB growth and timeouts
+      await query(`
+        DELETE FROM waterlog_hex_scores
+        WHERE run_id IS NOT NULL AND run_id NOT IN (
+          SELECT run_id FROM risk_model_runs ORDER BY created_at DESC LIMIT 2
+        )
+      `);
+      await query(`
+        DELETE FROM risk_model_runs
+        WHERE run_id NOT IN (
+          SELECT run_id FROM risk_model_runs ORDER BY created_at DESC LIMIT 5
+        )
+      `);
+    } catch (auditErr: any) {
+      console.warn('[!] Risk model audit/prune warning:', auditErr.message);
     }
 
     allConfidences.sort((a, b) => a - b);
