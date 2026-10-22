@@ -97,6 +97,7 @@ export function App() {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayInKolkata);
   const [highlightDrainageActionId, setHighlightDrainageActionId] = useState<string | null>(null);
   const [highlightDrainageLocation, setHighlightDrainageLocation] = useState<string | null>(null);
+  const [highlightDrainageDistrictId, setHighlightDrainageDistrictId] = useState<string | null>(null);
 
   // Modals & Drawers
   const [isModelOpen, setIsModelOpen] = useState<boolean>(false);
@@ -378,6 +379,8 @@ export function App() {
                   setHighlightDrainageLocation(location || null);
                   setActiveTab('drainage');
                 }}
+                highlightDistrictId={highlightDrainageDistrictId}
+                highlightLocation={highlightDrainageLocation}
               />
             </motion.div>
           )}
@@ -438,7 +441,12 @@ export function App() {
                 onSelectedDistrictIdChange={setSelectedDistrict}
                 selectedDate={selectedDate}
                 onOpenExportModal={() => setIsExportOpen(true)}
-                onNavigateToMap={() => setActiveTab('map')}
+                onNavigateToMapWithDistrict={(districtId, lat, lng, locationName) => {
+                  setHighlightDrainageDistrictId(districtId || null);
+                  setHighlightDrainageLocation(locationName || null);
+                  setSelectedDistrict(districtId);
+                  setActiveTab('map');
+                }}
                 highlightActionId={highlightDrainageActionId}
                 highlightLocation={highlightDrainageLocation}
               />

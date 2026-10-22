@@ -5,7 +5,6 @@ import dotenv from 'dotenv';
 import apiRoutes from './routes/api.js';
 import { initializeDatabase } from './db/index.js';
 import { seedDatabase } from './db/seed.js';
-import { pipelineScheduler } from './services/pipelineScheduler.js';
 
 dotenv.config();
 
@@ -29,35 +28,28 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Mounting backend gateway
 async function startServer() {
+  // Start listening immediately so gateway is always reachable and frontend never sees ECONNREFUSED
+  app.listen(Number(PORT), '0.0.0.0', () => {
+    console.log(`[+] Node.js Backend Gateway running on http://127.0.0.1:${PORT}`);
+  });
+
   try {
     await initializeDatabase();
     await seedDatabase();
-
-    // Start listening immediately so /api/status responds right away
-    app.listen(Number(PORT), '0.0.0.0', () => {
-      console.log(`[+] Node.js Backend Gateway running on http://127.0.0.1:${PORT}`);
-    });
-
-    // Pipeline startup is background work — don't block the server
-    pipelineScheduler.start().catch((err: any) => {
-      console.error('[-] Pipeline scheduler startup error:', err.message);
-    });
   } catch (err: any) {
-    console.error('[-] Failed to start server:', err.message);
-    process.exit(1);
+    console.error('[-] Initialization warning:', err.message);
   }
 }
 
 process.on('SIGTERM', () => {
   console.log('[*] SIGTERM received. Gracefully shutting down...');
-  pipelineScheduler.stop();
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
   console.log('[*] SIGINT received. Gracefully shutting down...');
-  pipelineScheduler.stop();
   process.exit(0);
 });
 

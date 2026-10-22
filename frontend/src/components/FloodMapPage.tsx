@@ -65,6 +65,266 @@ if (typeof window !== 'undefined' && (maplibregl as any).setWorkerUrl) {
 export type SeverityLevel = 'Severe' | 'High' | 'Moderate' | 'Minor';
 export type IncidentStatus = 'Unresolved' | 'In Progress' | 'Verified' | 'Resolved' | 'Historical' | 'Rejected';
 
+/**
+ * Normalizes any string representation of severity to 'Severe' | 'High' | 'Moderate' | 'Minor'.
+ * Handles different spellings, synonyms (critical, medium, low), and mixed casing without
+ * inappropriately defaulting every incident to the same style.
+ */
+export function normalizeSeverity(raw?: string | null): SeverityLevel {
+  if (!raw) return 'Moderate';
+  const s = String(raw).trim().toLowerCase();
+  if (s.includes('sev') || s.includes('crit') || s.includes('extrem')) return 'Severe';
+  if (s === 'high' || s.startsWith('hi')) return 'High';
+  if (s.includes('mod') || s.includes('med')) return 'Moderate';
+  if (s.includes('min') || s.includes('low')) return 'Minor';
+  return 'Moderate';
+}
+
+/**
+ * Returns raw HTML SVG string for MapLibre DOM markers based on severity specifications:
+ * - Severe: Red circular marker with a white warning symbol and subtle glow.
+ * - High: Orange diamond-shaped marker with a white water-level symbol.
+ * - Moderate: Yellow map-pin marker with a dark, clearly visible water-level symbol.
+ * - Minor: Green triangular marker with a white water-level symbol.
+ */
+export function getSeverityMarkerSvg(severityRaw: string | undefined | null, size = 34): string {
+  const sev = normalizeSeverity(severityRaw);
+  switch (sev) {
+    case 'Severe':
+      return `
+        <svg width="${size}" height="${size}" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 7px rgba(239, 68, 68, 0.85));">
+          <!-- Red circular marker with subtle glow -->
+          <circle cx="17" cy="17" r="14" fill="#dc2626" stroke="#ffffff" stroke-width="2.5" />
+          <!-- White warning symbol (Alert Triangle & Exclamation) -->
+          <path d="M17 7.5L25.5 22.5H8.5L17 7.5Z" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+          <line x1="17" y1="12.5" x2="17" y2="16.5" stroke="#ffffff" stroke-width="2" stroke-linecap="round" />
+          <circle cx="17" cy="19.5" r="1.1" fill="#ffffff" />
+        </svg>
+      `;
+    case 'High':
+      return `
+        <svg width="${size}" height="${size}" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.35));">
+          <!-- Orange diamond-shaped marker -->
+          <polygon points="17,3 31,17 17,31 3,17" fill="#ea580c" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round" />
+          <!-- White water-level symbol -->
+          <path d="M10 15.5c1.7 0 1.7-1.4 3.5-1.4s1.7 1.4 3.5 1.4 1.7-1.4 3.5-1.4 1.7 1.4 3.5 1.4M10 19.5c1.7 0 1.7-1.4 3.5-1.4s1.7 1.4 3.5 1.4 1.7-1.4 3.5-1.4 1.7 1.4 3.5 1.4" stroke="#ffffff" stroke-width="2" stroke-linecap="round" fill="none" />
+        </svg>
+      `;
+    case 'Moderate':
+      return `
+        <svg width="${size}" height="${Math.round(size * 1.12)}" viewBox="0 0 34 38" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.35));">
+          <!-- Yellow map-pin marker -->
+          <path d="M17 3C10.4 3 5 8.4 5 15C5 23.5 17 36 17 36C17 36 29 23.5 29 15C29 8.4 23.6 3 17 3Z" fill="#eab308" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round" />
+          <!-- Dark, clearly visible water-level symbol -->
+          <path d="M10 13c1.7 0 1.7-1.4 3.5-1.4s1.7 1.4 3.5 1.4 1.7-1.4 3.5-1.4 1.7 1.4 3.5 1.4M10 17c1.7 0 1.7-1.4 3.5-1.4s1.7 1.4 3.5 1.4 1.7-1.4 3.5-1.4 1.7 1.4 3.5 1.4" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round" fill="none" />
+        </svg>
+      `;
+    case 'Minor':
+    default:
+      return `
+        <svg width="${size}" height="${size}" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.35));">
+          <!-- Green triangular marker -->
+          <polygon points="17,3 31,29 3,29" fill="#10b981" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round" />
+          <!-- White water-level symbol -->
+          <path d="M10 19c1.7 0 1.7-1.3 3.5-1.3s1.7 1.3 3.5 1.3 1.7-1.3 3.5-1.3 1.7 1.3 3.5 1.3M11 23.5c1.5 0 1.5-1.2 3-1.2s1.5 1.2 3 1.2 1.5-1.2 3-1.2 1.5 1.2 3 1.2" stroke="#ffffff" stroke-width="2" stroke-linecap="round" fill="none" />
+        </svg>
+      `;
+  }
+}
+
+/**
+ * Reusable React component for severity shape & color rendering across Legend, Incident Lists, Drawers, etc.
+ */
+export const SeverityMarkerIcon: React.FC<{
+  severity: string | undefined | null;
+  size?: number;
+  className?: string;
+}> = ({ severity, size = 20, className = '' }) => {
+  const sev = normalizeSeverity(severity);
+  const height = sev === 'Moderate' ? Math.round(size * 1.12) : size;
+
+  if (sev === 'Severe') {
+    return (
+      <svg
+        width={size}
+        height={height}
+        viewBox="0 0 34 34"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={`shrink-0 ${className}`}
+        style={{ filter: 'drop-shadow(0 0 6px rgba(239, 68, 68, 0.85))' }}
+        role="img"
+        aria-label="Severe: Red circular marker with white warning symbol"
+      >
+        <circle cx="17" cy="17" r="14" fill="#dc2626" stroke="#ffffff" strokeWidth="2.5" />
+        <path d="M17 7.5L25.5 22.5H8.5L17 7.5Z" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        <line x1="17" y1="12.5" x2="17" y2="16.5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="17" cy="19.5" r="1.1" fill="#ffffff" />
+      </svg>
+    );
+  }
+
+  if (sev === 'High') {
+    return (
+      <svg
+        width={size}
+        height={height}
+        viewBox="0 0 34 34"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={`shrink-0 ${className}`}
+        style={{ filter: 'drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3))' }}
+        role="img"
+        aria-label="High: Orange diamond marker with white water-level symbol"
+      >
+        <polygon points="17,3 31,17 17,31 3,17" fill="#ea580c" stroke="#ffffff" strokeWidth="2.5" strokeLinejoin="round" />
+        <path d="M10 15.5c1.7 0 1.7-1.4 3.5-1.4s1.7 1.4 3.5 1.4 1.7-1.4 3.5-1.4 1.7 1.4 3.5 1.4M10 19.5c1.7 0 1.7-1.4 3.5-1.4s1.7 1.4 3.5 1.4 1.7-1.4 3.5-1.4 1.7 1.4 3.5 1.4" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" fill="none" />
+      </svg>
+    );
+  }
+
+  if (sev === 'Moderate') {
+    return (
+      <svg
+        width={size}
+        height={height}
+        viewBox="0 0 34 38"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={`shrink-0 ${className}`}
+        style={{ filter: 'drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3))' }}
+        role="img"
+        aria-label="Moderate: Yellow map-pin marker with dark water-level symbol"
+      >
+        <path d="M17 3C10.4 3 5 8.4 5 15C5 23.5 17 36 17 36C17 36 29 23.5 29 15C29 8.4 23.6 3 17 3Z" fill="#eab308" stroke="#ffffff" strokeWidth="2.5" strokeLinejoin="round" />
+        <path d="M10 13c1.7 0 1.7-1.4 3.5-1.4s1.7 1.4 3.5 1.4 1.7-1.4 3.5-1.4 1.7 1.4 3.5 1.4M10 17c1.7 0 1.7-1.4 3.5-1.4s1.7 1.4 3.5 1.4 1.7-1.4 3.5-1.4 1.7 1.4 3.5 1.4" stroke="#0f172a" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+      </svg>
+    );
+  }
+
+  // Minor
+  return (
+    <svg
+      width={size}
+      height={height}
+      viewBox="0 0 34 34"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={`shrink-0 ${className}`}
+      style={{ filter: 'drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3))' }}
+      role="img"
+      aria-label="Minor: Green triangular marker with white water-level symbol"
+    >
+      <polygon points="17,3 31,29 3,29" fill="#10b981" stroke="#ffffff" strokeWidth="2.5" strokeLinejoin="round" />
+      <path d="M10 19c1.7 0 1.7-1.3 3.5-1.3s1.7 1.3 3.5 1.3 1.7-1.3 3.5-1.3 1.7 1.3 3.5 1.3M11 23.5c1.5 0 1.5-1.2 3-1.2s1.5 1.2 3 1.2 1.5-1.2 3-1.2 1.5 1.2 3 1.2" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+};
+
+export interface DistrictRiskCalculation {
+  riskLevel: 'Severe' | 'High' | 'Moderate' | 'Low' | 'Insufficient Data';
+  score: number;
+  color: string;
+  borderColor: string;
+  fillOpacity: number;
+  reason: string;
+}
+
+/**
+ * Calculates a genuine hydrological flood risk classification for a district zone based on:
+ * - Active verified incidents by severity (Severe, High, Moderate, Minor)
+ * - Real-time rainfall accumulation in mm (24h)
+ * - Hydrological model & soil baseline data
+ */
+export function calculateDistrictRisk(
+  districtIncidents: FloodIncident[],
+  rainfallMm: number,
+  hasModelData: boolean,
+  hasBoundary: boolean
+): DistrictRiskCalculation {
+  if (!hasBoundary) {
+    return {
+      riskLevel: 'Insufficient Data',
+      score: 0,
+      color: '#94a3b8',
+      borderColor: '#64748b',
+      fillOpacity: 0.15,
+      reason: 'No geographic boundary available for selected district.'
+    };
+  }
+
+  const sevCount = districtIncidents.filter((i) => normalizeSeverity(i.severity) === 'Severe').length;
+  const highCount = districtIncidents.filter((i) => normalizeSeverity(i.severity) === 'High').length;
+  const modCount = districtIncidents.filter((i) => normalizeSeverity(i.severity) === 'Moderate').length;
+  const minCount = districtIncidents.filter((i) => normalizeSeverity(i.severity) === 'Minor').length;
+  const total = districtIncidents.length;
+
+  if (total === 0 && rainfallMm === 0 && !hasModelData) {
+    return {
+      riskLevel: 'Insufficient Data',
+      score: 0,
+      color: '#94a3b8',
+      borderColor: '#64748b',
+      fillOpacity: 0.15,
+      reason: 'Insufficient hydrological and telemetry observations for this district.'
+    };
+  }
+
+  // 1. Incident Score (0 - 50 pts)
+  const incScore = Math.min(50, (sevCount * 10) + (highCount * 6) + (modCount * 3) + (minCount * 1));
+
+  // 2. Rainfall Score (0 - 35 pts)
+  let rainScore = 0;
+  if (rainfallMm >= 64.5) rainScore = 35;
+  else if (rainfallMm >= 35.5) rainScore = 25;
+  else if (rainfallMm >= 15.5) rainScore = 16;
+  else if (rainfallMm >= 5.0) rainScore = 8;
+  else if (rainfallMm > 0) rainScore = 3;
+
+  // 3. Hydrological Model Baseline (0 - 15 pts)
+  const modelScore = hasModelData ? 12 : 4;
+
+  const totalScore = incScore + rainScore + modelScore;
+
+  if (totalScore >= 55 || sevCount >= 3 || (sevCount >= 1 && rainfallMm >= 35.5)) {
+    return {
+      riskLevel: 'Severe',
+      score: totalScore,
+      color: '#ef4444',
+      borderColor: '#dc2626',
+      fillOpacity: 0.25,
+      reason: `Severe flood risk: ${sevCount} critical waterlogging incidents, ${rainfallMm.toFixed(1)} mm rainfall.`
+    };
+  } else if (totalScore >= 38 || highCount >= 3 || (highCount >= 1 && rainfallMm >= 20)) {
+    return {
+      riskLevel: 'High',
+      score: totalScore,
+      color: '#f97316',
+      borderColor: '#ea580c',
+      fillOpacity: 0.23,
+      reason: `High flood risk: ${highCount} high-severity choke points, ${rainfallMm.toFixed(1)} mm rainfall.`
+    };
+  } else if (totalScore >= 20 || modCount >= 1 || sevCount >= 1 || highCount >= 1 || rainfallMm >= 15.0) {
+    return {
+      riskLevel: 'Moderate',
+      score: totalScore,
+      color: '#eab308',
+      borderColor: '#ca8a04',
+      fillOpacity: 0.21,
+      reason: `Moderate waterlogging risk: ${modCount} moderate pooling spots, ${rainfallMm.toFixed(1)} mm rainfall.`
+    };
+  } else {
+    return {
+      riskLevel: 'Low',
+      score: totalScore,
+      color: '#10b981',
+      borderColor: '#059669',
+      fillOpacity: 0.18,
+      reason: `Low risk: Well-drained network, ${rainfallMm.toFixed(1)} mm rainfall, no severe obstructions.`
+    };
+  }
+}
+
 export interface FloodIncident {
   id: string;
   name: string;
@@ -90,6 +350,7 @@ export interface FloodIncident {
   sourceType?: string;
   affectedRoad?: string;
   description?: string;
+  assignedAgency?: string;
 }
 
 export interface EstimatedRiskArea {
@@ -139,6 +400,8 @@ export interface FloodMapPageProps {
   onDateChange?: (date: string) => void;
   onOpenEoc?: () => void;
   onNavigateToDrainageActions?: (districtId?: string, actionId?: string, location?: string) => void;
+  highlightDistrictId?: string | null;
+  highlightLocation?: string | null;
 }
 
 // Supported Basemap Types grouped by Provider
@@ -206,7 +469,7 @@ export function getFeatureBounds(feature: any): [[number, number], [number, numb
   return [[minLng, minLat], [maxLng, maxLat]];
 }
 
-export const BASEMAP_OPTIONS: BasemapOption[] = [
+const BASEMAP_OPTIONS: BasemapOption[] = [
   // ── GROUP 1: GOOGLE MAPS (MAIN VIEWS) ──
   {
     id: 'google_satellite',
@@ -384,6 +647,8 @@ export function FloodMapPage({
   onDateChange,
   onOpenEoc,
   onNavigateToDrainageActions,
+  highlightDistrictId = null,
+  highlightLocation = null,
 }: FloodMapPageProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -402,6 +667,63 @@ export function FloodMapPage({
     ) || KARNATAKA_31_DISTRICTS_WEATHER[0];
   }, [selectedDistrict]);
 
+  // Track whether a highlight fly-to has already been applied for the current
+  // highlight props, so we don't repeatedly fly the map on every re-render.
+  const highlightHandledRef = useRef<string | null>(null);
+
+  // When navigated from the Drainage Advisory page, switch district and fly to
+  // the highlighted location on the flood map.
+  useEffect(() => {
+    if (!highlightDistrictId && !highlightLocation) return;
+
+    const highlightKey = `${highlightDistrictId}|${highlightLocation}`;
+    if (highlightHandledRef.current === highlightKey) return;
+
+    // Switch district if a different one is highlighted
+    if (highlightDistrictId && highlightDistrictId !== activeDistrict.id) {
+      const target = KARNATAKA_31_DISTRICTS_WEATHER.find(
+        (d) =>
+          d.id === highlightDistrictId ||
+          d.displayName.toLowerCase().includes(highlightDistrictId.toLowerCase()) ||
+          d.name.toLowerCase().includes(highlightDistrictId.toLowerCase())
+      );
+      if (target && onDistrictChange) {
+        onDistrictChange(target.displayName);
+        highlightHandledRef.current = highlightKey;
+        return; // district change will re-trigger this effect once map is ready
+      }
+    }
+
+    // Fly to highlighted coordinates once the map is ready
+    const tryFlyTo = () => {
+      if (!mapRef.current || !mapReadyRef.current) return;
+      let flyLat: number | null = null;
+      let flyLng: number | null = null;
+
+      if (highlightLocation && highlightDistrictId) {
+        const district = KARNATAKA_31_DISTRICTS_WEATHER.find(
+          (d) =>
+            d.id === highlightDistrictId ||
+            d.displayName.toLowerCase().includes(highlightDistrictId.toLowerCase()) ||
+            d.name.toLowerCase().includes(highlightDistrictId.toLowerCase())
+        );
+        if (district) {
+          flyLat = district.lat;
+          flyLng = district.lng;
+        }
+      }
+
+      if (flyLat !== null && flyLng !== null) {
+        mapRef.current.flyTo({ center: [flyLng, flyLat], zoom: 13, duration: 1000 });
+      }
+      highlightHandledRef.current = highlightKey;
+    };
+
+    // Map may not be ready yet; retry on next frames
+    const timer = setTimeout(tryFlyTo, 300);
+    return () => clearTimeout(timer);
+  }, [highlightDistrictId, highlightLocation, activeDistrict.id, onDistrictChange, mapReadyRef.current]);
+
   // UI State
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [districtDropdownOpen, setDistrictDropdownOpen] = useState(false);
@@ -410,8 +732,6 @@ export function FloodMapPage({
   // Map Layers Switcher Modal / Panel State
   const [layersPanelOpen, setLayersPanelOpen] = useState(false);
   const [basemapMode, setBasemapMode] = useState<BasemapMode>('google_satellite');
-  // Real-Time Waterlogging Hydrological Heatmap Switcher
-  const [heatmapMode, setHeatmapMode] = useState<boolean>(false);
 
   // NASA GIBS Temporal Date Selector & Error State
   const [nasaDate, setNasaDate] = useState<string>(() => {
@@ -473,22 +793,16 @@ export function FloodMapPage({
   // Independent Data Overlays Toggles (Requirement 3 & 4)
   const [overlayLiveIncidents, setOverlayLiveIncidents] = useState(true);
   const [overlayFloodedRoads, setOverlayFloodedRoads] = useState(true);
-  const [overlayFloodRiskZones, setOverlayFloodRiskZones] = useState(true);
   const [overlayWaterLevels, setOverlayWaterLevels] = useState(true);
 
-  // Selected incident & risk area for popup details
+  // Selected incident for popup details
   const [selectedIncident, setSelectedIncident] = useState<FloodIncident | null>(null);
-  const [selectedRiskArea, setSelectedRiskArea] = useState<EstimatedRiskArea | null>(null);
-  const [rightPanelTab, setRightPanelTab] = useState<'all' | 'confirmed' | 'estimated'>('all');
-
-  // Estimated Risk Areas State (Requirement 4)
-  const [estimatedRiskAreas, setEstimatedRiskAreas] = useState<EstimatedRiskArea[]>([]);
-  const [riskAreasLoading, setRiskAreasLoading] = useState<boolean>(false);
-  const districtRiskCacheRef = useRef<Record<string, EstimatedRiskArea[]>>({});
+  const [rightPanelTab, setRightPanelTab] = useState<'all' | 'mapped' | 'unmapped'>('all');
 
   // Telemetry, Hexes, and Weather Data
   const [weatherData, setWeatherData] = useState<any>(null);
   const [modelHexScores, setModelHexScores] = useState<any[]>([]);
+  const [districtWaterlogDepthCm, setDistrictWaterlogDepthCm] = useState<number | null>(null);
 
   // Fetch real Open-Meteo weather
   useEffect(() => {
@@ -501,44 +815,27 @@ export function FloodMapPage({
     return () => { mounted = false; };
   }, [activeDistrict.id, scoresKey]);
 
+  const HEX_SCORES_CACHE = new Map<string, any[]>();
+
   // Fetch Modelled H3 Risk Hexes for Flood Risk Overlay
   useEffect(() => {
     let mounted = true;
-    api.getWaterlogHexes({ district_id: activeDistrict.id, res: 7, limit: 100 })
+    if (HEX_SCORES_CACHE.has(activeDistrict.id)) {
+      const cached = HEX_SCORES_CACHE.get(activeDistrict.id)!;
+      setModelHexScores(cached);
+      const depth = cached[0]?.components?.waterlogging_depth_cm;
+      if (depth != null) setDistrictWaterlogDepthCm(Number(depth));
+    }
+    api.getWaterlogHexes({ district_id: activeDistrict.id, res: 7, limit: 1200 })
       .then((res) => {
         if (mounted && res?.success && Array.isArray(res.hexes)) {
+          HEX_SCORES_CACHE.set(activeDistrict.id, res.hexes);
           setModelHexScores(res.hexes);
+          const depth = res.hexes[0]?.components?.waterlogging_depth_cm;
+          if (depth != null) setDistrictWaterlogDepthCm(Number(depth));
         }
       })
       .catch((err) => console.warn('Model hexes fetch error:', err));
-    return () => { mounted = false; };
-  }, [activeDistrict.id, scoresKey]);
-
-  // Fetch 15–25 Estimated Waterlogging-Risk Areas grounded in rainfall, drainage & history (Requirement 4)
-  useEffect(() => {
-    let mounted = true;
-    const cached = districtRiskCacheRef.current[activeDistrict.id];
-    if (cached && cached.length > 0) {
-      setEstimatedRiskAreas(cached);
-    } else {
-      setRiskAreasLoading(true);
-    }
-
-    api.getEstimatedRiskAreas(activeDistrict.id)
-      .then((res) => {
-        if (!mounted) return;
-        if (res?.success && Array.isArray(res.risk_areas)) {
-          const areas = res.risk_areas as EstimatedRiskArea[];
-          setEstimatedRiskAreas(areas);
-          districtRiskCacheRef.current[activeDistrict.id] = areas;
-        }
-        setRiskAreasLoading(false);
-      })
-      .catch((err) => {
-        console.warn('Could not load estimated risk areas (preserving cached):', err);
-        if (mounted) setRiskAreasLoading(false);
-      });
-
     return () => { mounted = false; };
   }, [activeDistrict.id, scoresKey]);
 
@@ -573,11 +870,7 @@ export function FloodMapPage({
           if (res?.success && Array.isArray(res.incidents)) {
             const mapped: FloodIncident[] = res.incidents.map((item: any) => {
               const hasCoords = typeof item.lat === 'number' && typeof item.lng === 'number' && !isNaN(item.lat) && !isNaN(item.lng);
-              const rawSev = (item.severity || '').toString().toLowerCase();
-              let normSev: SeverityLevel = 'Moderate';
-              if (rawSev === 'severe' || rawSev === 'critical') normSev = 'Severe';
-              else if (rawSev === 'high') normSev = 'High';
-              else if (rawSev === 'minor' || rawSev === 'low') normSev = 'Minor';
+              const normSev: SeverityLevel = normalizeSeverity(item.severity);
 
               let normStatus: IncidentStatus = 'Unresolved';
               if (item.status === 'VERIFIED') normStatus = 'Verified';
@@ -610,6 +903,7 @@ export function FloodMapPage({
                 imageThumb: item.image_url || undefined,
                 affectedRoad: item.landmark,
                 description: item.recommended_action || 'Reported standing water on carriageway',
+                assignedAgency: item.assigned_agency || undefined,
               };
             });
             setGenuineIncidents(mapped);
@@ -670,7 +964,7 @@ export function FloodMapPage({
 
       // 2. Severity Filter
       if (filterSeverity !== 'ALL') {
-        if (inc.severity !== filterSeverity) return false;
+        if (normalizeSeverity(inc.severity) !== filterSeverity) return false;
       }
 
       // 3. Event Type Filter
@@ -696,29 +990,6 @@ export function FloodMapPage({
     });
   }, [districtIncidents, searchQuery, filterSeverity, filterEventType, filterStatus]);
 
-  // Filtered estimated risk areas matching user criteria (Requirement 4 & 5)
-  const filteredRiskAreas = useMemo(() => {
-    return estimatedRiskAreas.filter((ra) => {
-      // 1. Text Search Query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchesQuery =
-          ra.name.toLowerCase().includes(q) ||
-          (ra.recommendedAction && ra.recommendedAction.toLowerCase().includes(q)) ||
-          ra.districtId.toLowerCase().includes(q) ||
-          ra.h3Index.toLowerCase().includes(q);
-        if (!matchesQuery) return false;
-      }
-
-      // 2. Severity Filter
-      if (filterSeverity !== 'ALL') {
-        if (ra.severity !== filterSeverity) return false;
-      }
-
-      return true;
-    });
-  }, [estimatedRiskAreas, searchQuery, filterSeverity]);
-
   // Georeferenced vs Unmapped split
   const mappedIncidents = useMemo(() => {
     return filteredIncidents.filter((inc) => inc.hasCoords && inc.lat !== null && inc.lng !== null);
@@ -728,35 +999,30 @@ export function FloodMapPage({
     return filteredIncidents.filter((inc) => !inc.hasCoords || inc.lat === null || inc.lng === null);
   }, [filteredIncidents]);
 
-  // Summary counts: Calculated strictly from genuine records, reporting confirmed and estimated separately
+  // Summary counts: Calculated strictly from genuine records
   const summaryCounts = useMemo(() => {
-    const incSevere = filteredIncidents.filter((i) => i.severity === 'Severe').length;
-    const incHigh = filteredIncidents.filter((i) => i.severity === 'High').length;
-    const incModerate = filteredIncidents.filter((i) => i.severity === 'Moderate').length;
-    const incMinor = filteredIncidents.filter((i) => i.severity === 'Minor').length;
-
-    const riskSevere = filteredRiskAreas.filter((r) => r.severity === 'Severe').length;
-    const riskHigh = filteredRiskAreas.filter((r) => r.severity === 'High').length;
-    const riskModerate = filteredRiskAreas.filter((r) => r.severity === 'Moderate').length;
-    const riskMinor = filteredRiskAreas.filter((r) => r.severity === 'Minor').length;
+    const incSevere = filteredIncidents.filter((i) => normalizeSeverity(i.severity) === 'Severe').length;
+    const incHigh = filteredIncidents.filter((i) => normalizeSeverity(i.severity) === 'High').length;
+    const incModerate = filteredIncidents.filter((i) => normalizeSeverity(i.severity) === 'Moderate').length;
+    const incMinor = filteredIncidents.filter((i) => normalizeSeverity(i.severity) === 'Minor').length;
 
     return {
       confirmedTotal: filteredIncidents.length,
       confirmedMapped: mappedIncidents.length,
       confirmedUnmapped: unmappedIncidents.length,
-      estimatedTotal: filteredRiskAreas.length,
-      totalLocations: filteredIncidents.length + filteredRiskAreas.length,
-      severe: incSevere + riskSevere,
-      high: incHigh + riskHigh,
-      moderate: incModerate + riskModerate,
-      minor: incMinor + riskMinor,
+      estimatedTotal: 0,
+      totalLocations: filteredIncidents.length,
+      severe: incSevere,
+      high: incHigh,
+      moderate: incModerate,
+      minor: incMinor,
       total: filteredIncidents.length,
       mapped: mappedIncidents.length,
       unmapped: unmappedIncidents.length,
       confirmedBySeverity: { severe: incSevere, high: incHigh, moderate: incModerate, minor: incMinor },
-      estimatedBySeverity: { severe: riskSevere, high: riskHigh, moderate: riskModerate, minor: riskMinor },
+      estimatedBySeverity: { severe: 0, high: 0, moderate: 0, minor: 0 },
     };
-  }, [filteredIncidents, mappedIncidents.length, unmappedIncidents.length, filteredRiskAreas]);
+  }, [filteredIncidents, mappedIncidents.length, unmappedIncidents.length]);
 
   // Hourly rainfall — built from real Open-Meteo hourly precipitation_mm array when available.
   // Falls back to zero bars (not fabricated values) if weather data is not yet loaded.
@@ -907,12 +1173,8 @@ export function FloodMapPage({
             },
           },
           // Flood Risk Model Zones GeoJSON
+          // Flood Risk Model Zones GeoJSON
           'src-flood-risk-hexes': {
-            type: 'geojson',
-            data: { type: 'FeatureCollection', features: [] },
-          },
-          // Real-Time Waterlogging Hydrological Heatmap GeoJSON
-          'src-waterlog-heatmap-points': {
             type: 'geojson',
             data: { type: 'FeatureCollection', features: [] },
           },
@@ -956,91 +1218,6 @@ export function FloodMapPage({
               'line-color': '#22d3ee',
               'line-width': 2.5,
               'line-dasharray': [3, 2],
-            },
-          },
-
-          // Overlay: Real-Time Waterlogging Hydrological Heatmap Layer
-          {
-            id: 'lyr-waterlog-heatmap',
-            type: 'heatmap',
-            source: 'src-waterlog-heatmap-points',
-            layout: { visibility: heatmapMode ? 'visible' : 'none' },
-            paint: {
-              'heatmap-weight': [
-                'interpolate',
-                ['linear'],
-                ['get', 'weight'],
-                0, 0.2,
-                1, 1.0
-              ],
-              'heatmap-intensity': [
-                'interpolate',
-                ['linear'],
-                ['zoom'],
-                5, 0.8,
-                9, 1.0,
-                11, 1.2,
-                15, 1.5
-              ],
-              'heatmap-color': [
-                'interpolate',
-                ['linear'],
-                ['heatmap-density'],
-                0,    'rgba(0, 0, 0, 0)',
-                0.05, 'rgba(16, 185, 129, 0.6)',   // Minor (Green)
-                0.25, 'rgba(234, 179, 8, 0.8)',    // Moderate (Amber)
-                0.55, 'rgba(249, 115, 22, 0.9)',   // High (Orange)
-                0.85, 'rgba(239, 68, 68, 0.95)'    // Severe (Red)
-              ],
-              'heatmap-radius': [
-                'interpolate',
-                ['linear'],
-                ['zoom'],
-                5, 10,
-                8, 16,
-                10, 22,
-                12, 28,
-                14, 34,
-                16, 42
-              ],
-              'heatmap-opacity': 0.88,
-            },
-          },
-
-          // Overlay: Flood Risk Model Zones (H3 Hex Fill & Outline)
-          {
-            id: 'lyr-risk-hex-fill',
-            type: 'fill',
-            source: 'src-flood-risk-hexes',
-            layout: { visibility: 'none' },
-            paint: {
-              'fill-color': [
-                'match',
-                ['get', 'risk_class'],
-                'Severe', '#ef4444',
-                'High', '#f97316',
-                'Moderate', '#eab308',
-                '#10b981',
-              ],
-              'fill-opacity': 0.45,
-            },
-          },
-          {
-            id: 'lyr-risk-hex-line',
-            type: 'line',
-            source: 'src-flood-risk-hexes',
-            layout: { visibility: 'none' },
-            paint: {
-              'line-color': [
-                'match',
-                ['get', 'risk_class'],
-                'Severe', '#b91c1c',
-                'High', '#c2410c',
-                'Moderate', '#a16207',
-                '#047857',
-              ],
-              'line-width': 1.5,
-              'line-opacity': 0.8,
             },
           },
 
@@ -1111,7 +1288,7 @@ export function FloodMapPage({
         ],
       },
       center: [activeDistrict.lng, activeDistrict.lat],
-      zoom: 9.8,
+      zoom: 11.0,
       minZoom: 5,
       maxZoom: 18,
       attributionControl: false,
@@ -1124,6 +1301,7 @@ export function FloodMapPage({
       setTimeout(() => {
         map.resize();
       }, 200);
+
     });
 
     mapRef.current = map;
@@ -1163,10 +1341,16 @@ export function FloodMapPage({
         if (!mounted || !geojson?.features) return;
         const mapObj: Record<string, any> = {};
         geojson.features.forEach((feat: any) => {
-          const dId = (feat.properties?.district_id || feat.id || '').toLowerCase().trim();
-          const dName = (feat.properties?.district_name || '').toLowerCase().trim();
-          if (dId) mapObj[dId] = feat;
-          if (dName) mapObj[dName] = feat;
+          const rawId = (feat.properties?.district_id || feat.id || '').toLowerCase().trim();
+          const rawName = (feat.properties?.district_name || '').toLowerCase().trim();
+          if (rawId) {
+            mapObj[rawId] = feat;
+            mapObj[rawId.replace(/[\s-]+/g, '_')] = feat;
+          }
+          if (rawName) {
+            mapObj[rawName] = feat;
+            mapObj[rawName.replace(/[\s-]+/g, '_')] = feat;
+          }
         });
         setDistrictGeoFeatures(mapObj);
       })
@@ -1174,52 +1358,43 @@ export function FloodMapPage({
     return () => { mounted = false; };
   }, []);
 
-  // Fit map viewport specifically to the selected district boundary geometry or statewide Karnataka
+  // Fit map viewport specifically to the selected district boundary geometry for all 31 districts
+  // Fit map viewport specifically to the selected district boundary or incident extent for optimal framing
   const fitToActiveDistrict = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Priority 1: fit to actual incident and estimated risk locations if any exist
-    const currentMapped = mappedIncidents.filter((inc) => {
-      const incDist = (inc.districtId || '').toLowerCase().replace(/[\s-]+/g, '_');
-      const activeId = activeDistrict.id.toLowerCase().replace(/[\s-]+/g, '_');
-      return incDist === activeId ||
-        (incDist === 'davangere' && activeId === 'davanagere') ||
-        (incDist === 'davanagere' && activeId === 'davangere');
-    });
+    // Priority 1: Fit strictly to the verified district incidents extent (frames hotspots across viewport like Image 2)
+    const validCoords = mappedIncidents
+      .filter((inc) => inc.lat !== null && inc.lng !== null && !isNaN(inc.lat) && !isNaN(inc.lng))
+      .map((inc) => [inc.lng!, inc.lat!] as [number, number]);
 
-    const allPoints: [number, number][] = [];
-    currentMapped.forEach((inc) => {
-      if (inc.lat !== null && inc.lng !== null) allPoints.push([inc.lng, inc.lat]);
-    });
-    filteredRiskAreas.forEach((ra) => {
-      if (ra.lat !== null && ra.lng !== null) allPoints.push([ra.lng, ra.lat]);
-    });
+    if (validCoords.length > 0) {
+      const lats = validCoords.map((c) => c[1]);
+      const lngs = validCoords.map((c) => c[0]);
+      const minLat = Math.min(...lats);
+      const maxLat = Math.max(...lats);
+      const minLng = Math.min(...lngs);
+      const maxLng = Math.max(...lngs);
 
-    if (allPoints.length > 0) {
-      let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-      allPoints.forEach(([lng, lat]) => {
-        if (lat < minLat) minLat = lat;
-        if (lat > maxLat) maxLat = lat;
-        if (lng < minLng) minLng = lng;
-        if (lng > maxLng) maxLng = lng;
-      });
-      if (minLat !== Infinity) {
-        if (allPoints.length === 1) {
-          map.flyTo({ center: [minLng, minLat], zoom: 13.5, duration: 1000 });
-        } else {
-          map.fitBounds([[minLng, minLat], [maxLng, maxLat]], {
-            padding: { top: 80, bottom: 80, left: 80, right: 80 },
-            maxZoom: 13.5,
-            duration: 1000,
-          });
+      map.fitBounds(
+        [
+          [minLng, minLat],
+          [maxLng, maxLat],
+        ],
+        {
+          padding: { top: 55, bottom: 55, left: 55, right: 55 },
+          maxZoom: 11.5,
+          duration: 350,
         }
-        return;
-      }
+      );
+      return;
     }
 
-    // Priority 2: fit to verified district boundary polygon
-    const feat = districtGeoFeatures[activeDistrict.id] ||
+    // Priority 2: Fit strictly to the verified district boundary polygon
+    const cleanId = activeDistrict.id.toLowerCase().replace(/[\s-]+/g, '_');
+    const feat = districtGeoFeatures[cleanId] ||
+                 districtGeoFeatures[activeDistrict.id] ||
                  districtGeoFeatures[activeDistrict.name.toLowerCase().trim()] ||
                  districtGeoFeatures[activeDistrict.displayName.toLowerCase().trim()];
 
@@ -1227,41 +1402,43 @@ export function FloodMapPage({
       const bounds = getFeatureBounds(feat);
       if (bounds) {
         map.fitBounds(bounds, {
-          padding: { top: 60, bottom: 60, left: 60, right: 60 },
-          maxZoom: 13.5,
-          duration: 1000,
+          padding: { top: 45, bottom: 45, left: 45, right: 45 },
+          maxZoom: 11.5,
+          duration: 350,
         });
         return;
       }
     }
 
-    // Priority 3: verified district-center fallback
+    // Priority 3: Verified district-center fallback with optimal district overview zoom
     map.flyTo({
       center: [activeDistrict.lng, activeDistrict.lat],
-      zoom: 10.2,
-      duration: 1000,
+      zoom: 11.0,
+      duration: 350,
     });
-  }, [activeDistrict, districtGeoFeatures, mappedIncidents, filteredRiskAreas]);
+  }, [activeDistrict, districtGeoFeatures, mappedIncidents]);
 
   const prevDistrictIdRef = useRef<string | null>(null);
+  const initialZoomDoneRef = useRef<boolean>(false);
 
   useEffect(() => {
-    // Zoom and reset state ONLY when the district changes, never on manual pan/zoom
-    if (prevDistrictIdRef.current === activeDistrict.id) return;
-    prevDistrictIdRef.current = activeDistrict.id;
+    // Zoom and reset state when the district changes, or on initial load as soon as incidents arrive
+    const districtChanged = prevDistrictIdRef.current !== activeDistrict.id;
+    const shouldInitialFit = !initialZoomDoneRef.current && mappedIncidents.length > 0;
 
-    // Immediately clear stale markers, heatmap points, and previous-district selection
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
-    const map = mapRef.current;
-    if (map) {
-      const hmSrc = map.getSource('src-waterlog-heatmap-points') as maplibregl.GeoJSONSource | undefined;
-      if (hmSrc) hmSrc.setData({ type: 'FeatureCollection', features: [] });
+    if (!districtChanged && !shouldInitialFit) return;
+
+    if (districtChanged) {
+      prevDistrictIdRef.current = activeDistrict.id;
+      setSelectedIncident(null);
     }
-    setSelectedIncident(null);
+
+    if (mappedIncidents.length > 0) {
+      initialZoomDoneRef.current = true;
+    }
 
     fitToActiveDistrict();
-  }, [activeDistrict.id, fitToActiveDistrict]);
+  }, [activeDistrict.id, fitToActiveDistrict, mappedIncidents.length]);
 
   // Update district boundary layer on map
   useEffect(() => {
@@ -1295,119 +1472,7 @@ export function FloodMapPage({
     else map.once('load', clearRoads);
   }, [activeDistrict.id]);
 
-  // Synchronize Real-Time Hydrological Heatmap GeoJSON Points strictly from active georeferenced observations
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const updateHeatmap = () => {
-      const source = map.getSource('src-waterlog-heatmap-points') as maplibregl.GeoJSONSource | undefined;
-      if (!source) return;
-      try {
-        const incidentFeatures = mappedIncidents.map((inc) => {
-          let weight = 0.45;
-          if (inc.severity === 'Severe') weight = 1.0;
-          else if (inc.severity === 'High') weight = 0.70;
-          else if (inc.severity === 'Moderate') weight = 0.45;
-          else if (inc.severity === 'Minor') weight = 0.20;
-          return {
-            type: 'Feature' as const,
-            properties: { weight, type: 'incident', name: inc.name, severity: inc.severity },
-            geometry: { type: 'Point' as const, coordinates: [inc.lng!, inc.lat!] },
-          };
-        });
-        source.setData({ type: 'FeatureCollection', features: incidentFeatures });
-      } catch (err) {
-        console.warn('Error updating heatmap source data:', err);
-      }
-    };
-
-    if (mapReadyRef.current) {
-      updateHeatmap();
-    } else {
-      // shortcut: schedule on load; safe to call multiple times since map fires 'load' once
-      map.once('load', updateHeatmap);
-    }
-  }, [mappedIncidents]);
-
-  // Synchronize Heatmap Layer Visibility with Switcher
-  // Also show/hide incident DOM markers — heatmap ON hides them, OFF restores them.
-  // Markers stay in the DOM; no records are deleted.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    try {
-      if (map.getLayer('lyr-waterlog-heatmap')) {
-        map.setLayoutProperty('lyr-waterlog-heatmap', 'visibility', heatmapMode ? 'visible' : 'none');
-      }
-    } catch {
-      // ignore
-    }
-    // Soften marker prominence instead of hiding completely so observations remain accessible
-    markersRef.current.forEach((marker) => {
-      const el = marker.getElement();
-      if (el?.dataset?.markerType === 'incident' || el?.dataset?.markerType === 'risk_area') {
-        el.style.opacity = heatmapMode ? '0.65' : '1.0';
-      }
-    });
-  }, [heatmapMode]);
-
-  // Update Grounded & Model-Estimated Risk Zones in GeoJSON Source
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReadyRef.current) return;
-    const source = map.getSource('src-flood-risk-hexes') as maplibregl.GeoJSONSource | undefined;
-    if (!source) return;
-
-    try {
-      let features: any[] = [];
-      if (filteredRiskAreas.length > 0) {
-        features = filteredRiskAreas.flatMap((ra) => {
-          if (!ra.boundary || !ra.boundary.length) return [];
-          return [{
-            type: 'Feature',
-            properties: {
-              h3_index: ra.h3Index,
-              risk_score: ra.riskScore,
-              risk_class: ra.severity === 'Severe' ? 'Severe Waterlogging' : ra.severity === 'High' ? 'High Risk' : ra.severity === 'Moderate' ? 'Moderate Risk' : 'Minor Risk',
-              confidence: ra.confidence,
-              name: ra.name,
-              is_estimated: true,
-            },
-            geometry: {
-              type: 'Polygon',
-              coordinates: [ra.boundary],
-            },
-          }];
-        });
-      } else if (modelHexScores.length > 0) {
-        features = modelHexScores.flatMap((hex) => {
-          try {
-            if (!hex.h3_index || !h3.cellToBoundary) return [];
-            const boundary = h3.cellToBoundary(hex.h3_index, true); // [lng, lat]
-            return [{
-              type: 'Feature',
-              properties: {
-                h3_index: hex.h3_index,
-                risk_score: hex.risk_score,
-                risk_class: hex.risk_class,
-                confidence: hex.confidence,
-              },
-              geometry: {
-                type: 'Polygon',
-                coordinates: [boundary],
-              },
-            }];
-          } catch {
-            return [];
-          }
-        });
-      }
-      source.setData({ type: 'FeatureCollection', features: features as any });
-    } catch (err) {
-      console.warn('Error rendering flood risk hex features:', err);
-    }
-  }, [filteredRiskAreas, modelHexScores]);
+  // (waterlogMarkers declared above before summaryCounts)
 
   // Switch Basemap smoothly by updating layer visibility without recreating map
   useEffect(() => {
@@ -1503,12 +1568,7 @@ export function FloodMapPage({
     if (map.getLayer('flooded-roads-glow')) map.setLayoutProperty('flooded-roads-glow', 'visibility', roadVis);
     if (map.getLayer('flooded-roads-core')) map.setLayoutProperty('flooded-roads-core', 'visibility', roadVis);
 
-    // Flood Risk Model Zones
-    const riskVis = overlayFloodRiskZones ? 'visible' : 'none';
-    if (map.getLayer('lyr-risk-hex-fill')) map.setLayoutProperty('lyr-risk-hex-fill', 'visibility', riskVis);
-    if (map.getLayer('lyr-risk-hex-line')) map.setLayoutProperty('lyr-risk-hex-line', 'visibility', riskVis);
-
-  }, [overlayFloodedRoads, overlayFloodRiskZones]);
+  }, [overlayFloodedRoads]);
 
   // Render Custom DOM Markers for Incidents and Water Gauges
   useEffect(() => {
@@ -1519,76 +1579,66 @@ export function FloodMapPage({
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
-    // Severity color mapping
-    const colorForSeverity = (sev: SeverityLevel) => {
-      switch (sev) {
-        case 'Severe':
-          return { bg: '#ef4444', ring: '#fee2e2', border: '#b91c1c' };
-        case 'High':
-          return { bg: '#f97316', ring: '#ffedd5', border: '#c2410c' };
-        case 'Moderate':
-          return { bg: '#eab308', ring: '#fef9c3', border: '#a16207' };
-        case 'Minor':
-        default:
-          return { bg: '#10b981', ring: '#d1fae5', border: '#047857' };
-      }
-    };
-
-    // Markers are hidden when heatmap is ON to avoid visual double-counting.
-    // Heatmap OFF restores them. Neither branch deletes any records.
-
     // 1. Live Incidents (if overlay enabled)
     if (overlayLiveIncidents) {
       mappedIncidents.forEach((inc) => {
-        const colors = colorForSeverity(inc.severity);
+        const normSev = normalizeSeverity(inc.severity);
         const el = document.createElement('div');
-        el.className = 'group cursor-pointer select-none';
-        if (heatmapMode) el.style.opacity = '0.65';
+        el.className = 'group cursor-pointer select-none relative';
         el.dataset.markerType = 'incident';
+        el.dataset.severity = normSev;
+
+        const fullLandmark = inc.landmark || inc.name;
         el.innerHTML = `
-          <div style="display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));">
+          <div style="display: flex; flex-direction: column; align-items: center; position: relative;">
             <div style="
-              background: white;
-              color: #1e293b;
+              position: absolute;
+              bottom: 100%;
+              left: 50%;
+              transform: translateX(-50%);
+              margin-bottom: 6px;
+              background: rgba(15, 23, 42, 0.95);
+              color: #ffffff;
               font-size: 11px;
               font-weight: 700;
-              padding: 2px 7px;
+              padding: 3px 8px;
               border-radius: 6px;
-              box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+              box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
               white-space: nowrap;
-              margin-bottom: 2px;
-              border: 1px solid #e2e8f0;
-            ">${inc.name.split(' ')[0]}</div>
-            <div style="
-              width: 32px;
-              height: 32px;
-              border-radius: 50% 50% 50% 0;
-              transform: rotate(-45deg);
-              background: ${colors.bg};
-              border: 2px solid white;
-              box-shadow: 0 0 0 2px ${colors.border};
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              transition: transform 0.2s;
-            ">
-              <svg style="transform: rotate(45deg); width: 16px; height: 16px; color: white;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3 15c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2M3 9c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2M3 21c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2" />
-              </svg>
+              pointer-events: none;
+              opacity: 0;
+              transition: opacity 120ms ease;
+              z-index: 50;
+            " class="marker-hover-label">${fullLandmark}</div>
+            <div style="transition: transform 120ms ease;" class="marker-icon-wrapper">
+              ${getSeverityMarkerSvg(normSev, 32)}
             </div>
           </div>
         `;
 
+        el.addEventListener('mouseenter', () => {
+          const lbl = el.querySelector('.marker-hover-label') as HTMLElement | null;
+          if (lbl) lbl.style.opacity = '1';
+          const icon = el.querySelector('.marker-icon-wrapper') as HTMLElement | null;
+          if (icon) icon.style.transform = 'scale(1.15)';
+        });
+
+        el.addEventListener('mouseleave', () => {
+          const lbl = el.querySelector('.marker-hover-label') as HTMLElement | null;
+          if (lbl) lbl.style.opacity = '0';
+          const icon = el.querySelector('.marker-icon-wrapper') as HTMLElement | null;
+          if (icon) icon.style.transform = 'scale(1)';
+        });
+
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           setSelectedIncident(inc);
-          setSelectedRiskArea(null);
           if (inc.lng !== null && inc.lat !== null) {
-            map.flyTo({ center: [inc.lng, inc.lat], zoom: 12.5, duration: 800 });
+            map.flyTo({ center: [inc.lng, inc.lat], zoom: 12.5, duration: 350 });
           }
         });
 
-        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([inc.lng!, inc.lat!])
           .addTo(map);
 
@@ -1596,68 +1646,7 @@ export function FloodMapPage({
       });
     }
 
-    // 2. Estimated Risk Areas (Distinguished diamond/hex badge with risk score)
-    if (overlayFloodRiskZones) {
-      filteredRiskAreas.forEach((ra) => {
-        if (ra.lat === null || ra.lng === null) return;
-        const colors = colorForSeverity(ra.severity);
-        const el = document.createElement('div');
-        el.className = 'group cursor-pointer select-none';
-        el.dataset.markerType = 'risk_area';
-        if (heatmapMode) el.style.opacity = '0.65';
-        el.innerHTML = `
-          <div style="display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.35));">
-            <div style="
-              background: white;
-              color: #0f172a;
-              font-size: 10px;
-              font-weight: 800;
-              padding: 2px 6px;
-              border-radius: 6px;
-              box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-              white-space: nowrap;
-              margin-bottom: 2px;
-              border: 1px solid ${colors.border};
-              display: flex;
-              align-items: center;
-              gap: 3px;
-            ">
-              <span style="color: ${colors.bg}; font-size: 9px;">⬡</span>
-              <span>${ra.name.split(' ')[0]}</span>
-              <span style="background: ${colors.ring}; color: ${colors.border}; border-radius: 3px; padding: 0 3px; font-size: 9px;">${ra.riskScore}</span>
-            </div>
-            <div style="
-              width: 28px;
-              height: 28px;
-              border-radius: 7px;
-              transform: rotate(45deg);
-              background: ${colors.bg};
-              border: 2px solid white;
-              box-shadow: 0 0 0 2px ${colors.border};
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              transition: transform 0.2s;
-            ">
-              <span style="transform: rotate(-45deg); font-size: 12px; font-weight: 900; color: white;">⬡</span>
-            </div>
-          </div>
-        `;
-
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          setSelectedRiskArea(ra);
-          setSelectedIncident(null);
-          map.flyTo({ center: [ra.lng, ra.lat], zoom: 12.8, duration: 800 });
-        });
-
-        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-          .setLngLat([ra.lng, ra.lat])
-          .addTo(map);
-
-        markersRef.current.push(marker);
-      });
-    }
+    // 2. Model Hex Markers disabled (showing real ground incidents only)
 
     // 3. Water Level Gauges (if overlay is enabled)
     if (overlayWaterLevels) {
@@ -1686,7 +1675,7 @@ export function FloodMapPage({
 
         el.addEventListener('click', (e) => {
           e.stopPropagation();
-          map.flyTo({ center: [wl.lng, wl.lat], zoom: 12.5, duration: 800 });
+          map.flyTo({ center: [wl.lng, wl.lat], zoom: 12.5, duration: 350 });
         });
 
         const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
@@ -1696,7 +1685,7 @@ export function FloodMapPage({
         markersRef.current.push(marker);
       });
     }
-  }, [mappedIncidents, filteredRiskAreas, districtWaterLevels, overlayLiveIncidents, overlayFloodRiskZones, overlayWaterLevels, heatmapMode]);
+  }, [mappedIncidents, districtWaterLevels, overlayLiveIncidents, overlayWaterLevels]);
 
   const activeBasemapConfig = useMemo(() => {
     return BASEMAP_OPTIONS.find((b) => b.id === basemapMode) || BASEMAP_OPTIONS[0];
@@ -1741,6 +1730,11 @@ export function FloodMapPage({
             >
               <MapPin size={15} className="text-[#1d6fd8]" />
               <span>{activeDistrict.displayName}, Karnataka</span>
+              {districtWaterlogDepthCm != null && (
+                <span className="ml-2 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-700">
+                  💧 {districtWaterlogDepthCm} cm waterlogging
+                </span>
+              )}
               <ChevronDown size={14} className="text-slate-400" />
             </button>
 
@@ -1814,7 +1808,7 @@ export function FloodMapPage({
             {(['ALL', 'Severe', 'High', 'Moderate', 'Minor'] as const).map((sev) => {
               const count = sev === 'ALL'
                 ? districtIncidents.length
-                : districtIncidents.filter((i) => i.severity === sev).length;
+                : districtIncidents.filter((i) => normalizeSeverity(i.severity) === sev).length;
               const isActive = filterSeverity === sev;
               return (
                 <button
@@ -1945,21 +1939,6 @@ export function FloodMapPage({
                 <ChevronDown size={12} className="opacity-70" />
               </button>
 
-              {/* Real-Time Hydrological Heatmap Switcher Button */}
-              <button
-                type="button"
-                onClick={() => setHeatmapMode((v) => !v)}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold transition ${
-                  heatmapMode
-                    ? 'bg-amber-500 text-white shadow-sm hover:bg-amber-600'
-                    : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
-                }`}
-                title="Toggle Real-Time Hydrological Waterlogging Heatmap"
-              >
-                <span className="text-sm">🔥</span>
-                <span>Heatmap: {heatmapMode ? 'ON' : 'OFF'}</span>
-              </button>
-
               <button
                 type="button"
                 onClick={() => setOverlayLiveIncidents((v) => !v)}
@@ -1987,31 +1966,8 @@ export function FloodMapPage({
                 <Layers size={13} />
                 Flooded Roads
               </button>
-
-              {/* Risk Layer Toggle */}
-              <button
-                type="button"
-                onClick={() => setOverlayFloodRiskZones((v) => !v)}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold transition ${
-                  overlayFloodRiskZones
-                    ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-                    : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-                title="Toggle Estimated Risk Layer"
-              >
-                <span className="text-[13px]">⬡</span>
-                Risk Layer{filteredRiskAreas.length > 0 && overlayFloodRiskZones ? ` (${filteredRiskAreas.length})` : ''}
-              </button>
             </div>
           </div>
-
-          {/* Heatmap Empty State Banner */}
-          {heatmapMode && mappedIncidents.length === 0 && (
-            <div className="absolute left-1/2 top-16 z-20 -translate-x-1/2 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/95 px-4 py-2.5 text-xs font-semibold text-slate-300 shadow-xl backdrop-blur">
-              <Info size={16} className="text-cyan-400 shrink-0" />
-              <span>No georeferenced waterlogging observations available for {activeDistrict.displayName} to render heatmap.</span>
-            </div>
-          )}
 
           {/* NASA Earth Observation Layer Banner & Controls */}
           {isNasaLayerActive && (
@@ -2139,55 +2095,32 @@ export function FloodMapPage({
 
           {/* Right Floating Legend Box */}
           <div className="absolute bottom-6 right-3 z-20 w-48 rounded-2xl border border-slate-200/90 bg-white/95 p-3.5 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-[#111a2b]/95">
-            {/* Heatmap Gradient Scale when Active */}
-            {heatmapMode && (
-              <div className="mb-2.5 pb-2.5 border-b border-slate-200/70 dark:border-slate-700/70">
-                <div className="flex items-center justify-between text-[10px] font-black uppercase text-amber-500">
-                  <span>🔥 Risk Heatmap</span>
-                  <span className="font-extrabold text-emerald-600">LIVE</span>
-                </div>
-                <div className="mt-1.5 h-2.5 w-full rounded-full bg-gradient-to-r from-emerald-500 via-yellow-400 via-orange-500 to-rose-600 shadow-inner" />
-                <div className="mt-1 flex justify-between text-[9px] font-bold text-slate-400">
-                  <span>Low Risk</span>
-                  <span>Severe Flood</span>
-                </div>
-              </div>
-            )}
-
             <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-900 dark:text-white">
               Waterlogging Severity
             </h4>
-            <div className="mt-2 space-y-1.5 text-[11px]">
-              <div className="flex items-center gap-2">
-                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-rose-500 text-white font-bold text-[8px]">
-                  ●
-                </span>
+            <div className="mt-2 space-y-2 text-[11px]">
+              <div className="flex items-center gap-2.5">
+                <SeverityMarkerIcon severity="Severe" size={18} />
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  Severe (&gt; 1 ft)
+                  Severe (&gt; 1 ft) · Red Circle
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-orange-500 text-white font-bold text-[8px]">
-                  ●
-                </span>
+              <div className="flex items-center gap-2.5">
+                <SeverityMarkerIcon severity="High" size={18} />
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  High (0.5 – 1 ft)
+                  High (0.5 – 1 ft) · Orange Diamond
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-yellow-400 text-white font-bold text-[8px]">
-                  ●
-                </span>
+              <div className="flex items-center gap-2.5">
+                <SeverityMarkerIcon severity="Moderate" size={18} />
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  Moderate (0.25 – 0.5 ft)
+                  Moderate (0.25 – 0.5 ft) · Yellow Pin
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-white font-bold text-[8px]">
-                  ●
-                </span>
+              <div className="flex items-center gap-2.5">
+                <SeverityMarkerIcon severity="Minor" size={18} />
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  Minor (&lt; 0.25 ft)
+                  Minor (&lt; 0.25 ft) · Green Triangle
                 </span>
               </div>
             </div>
@@ -2206,8 +2139,139 @@ export function FloodMapPage({
           </div>
 
           {/* Selected Incident Detail Drawer */}
-          {selectedIncident && (
-            <div className="absolute left-3 top-16 z-30 max-w-sm rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-[#111a2b]/95">
+          {selectedIncident && selectedIncident.category !== 'Estimated Waterlogging' && (
+            <div className="absolute left-3 top-16 z-30 max-w-sm w-88 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-[#111a2b]/95">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <SeverityMarkerIcon severity={selectedIncident.severity} size={18} />
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase ${
+                      selectedIncident.severity === 'Severe'
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300'
+                        : selectedIncident.severity === 'High'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300'
+                        : selectedIncident.severity === 'Moderate'
+                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950/80 dark:text-yellow-300'
+                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300'
+                    }`}
+                  >
+                    {selectedIncident.severity}
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                    Depth: {selectedIncident.waterDepthText}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedIncident(null)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <h3 className="mt-2 text-sm font-bold text-slate-900 dark:text-white">
+                {selectedIncident.name}
+              </h3>
+
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  {selectedIncident.eventType || 'Road waterlogging'}
+                </span>
+                <span className={`rounded px-1.5 py-0.5 font-bold ${
+                  selectedIncident.status === 'Verified'
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300'
+                    : selectedIncident.status === 'Historical'
+                    ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                    : 'bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300'
+                }`}>
+                  {selectedIncident.status === 'Unresolved' ? 'Pending Field Verification' : selectedIncident.status}
+                </span>
+                {selectedIncident.drainageAssetId && (
+                  <span className="rounded bg-blue-100 px-1.5 py-0.5 font-bold text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">
+                    Drainage Asset: {selectedIncident.drainageAssetId}
+                  </span>
+                )}
+              </div>
+
+              {/* Timestamp & Location details */}
+              <div className="mt-2 space-y-1 text-xs text-slate-500 dark:text-slate-400">
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <Clock size={12} className="text-slate-400 shrink-0" />
+                  <span>
+                    Reported: {selectedIncident.timestamp ? new Date(selectedIncident.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : selectedIncident.updatedAtText}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <MapPin size={12} className="text-slate-400 shrink-0" />
+                  <span>
+                    {selectedIncident.landmark} · {selectedIncident.hasCoords ? `GPS: ${selectedIncident.lat?.toFixed(4)}, ${selectedIncident.lng?.toFixed(4)}` : 'GPS: Survey pending'}
+                  </span>
+                </div>
+                {/* Available Rainfall Data */}
+                <div className="flex items-center gap-1.5 text-[11px] text-sky-700 dark:text-sky-300 font-medium">
+                  <CloudRain size={12} className="shrink-0" />
+                  <span>
+                    Rainfall: {weatherData?.current?.precipitation_mm != null ? `${weatherData.current.precipitation_mm} mm/h (Open-Meteo)` : '0.0 mm/h'}
+                    {weatherData?.observed_rainfall?.value != null ? ` · Gauge: ${weatherData.observed_rainfall.value} mm` : ' · Gauge: Unmonitored'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Evidence-grounded Recommendations */}
+              <div className="mt-2.5 rounded-xl border border-blue-100 bg-blue-50/70 p-2.5 dark:border-blue-900/60 dark:bg-blue-950/30">
+                <div className="text-[11px] font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1">
+                  <ShieldCheck size={13} className="text-blue-600 dark:text-blue-400" />
+                  <span>Action Recommendations ({activeDistrict.displayName})</span>
+                </div>
+                <ul className="mt-1.5 space-y-1 text-[10px] text-slate-700 dark:text-slate-300">
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-blue-600 font-bold">•</span>
+                    <span><strong>Inspect Drain:</strong> Inspect inlet/outfall of {selectedIncident.drainageAssetId || 'nearby stormwater culvert'}</span>
+                  </li>
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-amber-600 font-bold">•</span>
+                    <span><strong>Check Blockage:</strong> Clear reported silt obstructions and trash screen</span>
+                  </li>
+                  {(selectedIncident.eventType?.toLowerCase().includes('underpass') || selectedIncident.eventType?.toLowerCase().includes('road')) && (
+                    <li className="flex items-start gap-1.5">
+                      <span className="text-rose-600 font-bold">•</span>
+                      <span><strong>Warning:</strong> Issue traffic advisory for flooded carriageway</span>
+                    </li>
+                  )}
+                  {selectedIncident.severity === 'Severe' && (
+                    <li className="flex items-start gap-1.5 text-rose-700 dark:text-rose-300 font-semibold">
+                      <span className="text-rose-600 font-bold">•</span>
+                      <span><strong>Escalate Severe:</strong> Escalate to {selectedIncident.assignedAgency || activeDistrict.displayName + ' Disaster Management / Municipal Corp'} for emergency pump dispatch</span>
+                    </li>
+                  )}
+                </ul>
+              </div>
+
+              <div className="mt-3.5 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onNavigateToDrainageActions) {
+                      onNavigateToDrainageActions(
+                        activeDistrict.id,
+                        selectedIncident.drainageAssetId || selectedIncident.id,
+                        selectedIncident.landmark || selectedIncident.name
+                      );
+                    }
+                  }}
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#1d6fd8] px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#1558a8]"
+                >
+                  <span>Open in Drainage Actions</span>
+                  <ArrowRight size={13} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Selected Waterlogging Marker Popup Card */}
+          {selectedIncident && selectedIncident.category === 'Estimated Waterlogging' && (
+            <div className="absolute left-3 top-16 z-30 max-w-sm rounded-2xl border border-amber-200 bg-white/95 p-4 shadow-xl backdrop-blur dark:border-amber-900 dark:bg-[#111a2b]/95">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <span
@@ -2221,9 +2285,9 @@ export function FloodMapPage({
                         : 'bg-emerald-100 text-emerald-700'
                     }`}
                   >
-                    {selectedIncident.severity}
+                    💧 {selectedIncident.severity} Waterlogging
                   </span>
-                  <span className="text-[11px] font-bold text-slate-500">
+                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                     Depth: {selectedIncident.waterDepthText}
                   </span>
                 </div>
@@ -2241,140 +2305,20 @@ export function FloodMapPage({
               </h3>
 
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                  {selectedIncident.eventType || 'Road waterlogging'}
-                </span>
-                <span className={`rounded px-1.5 py-0.5 font-bold ${
-                  selectedIncident.status === 'Verified'
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : selectedIncident.status === 'Historical'
-                    ? 'bg-slate-100 text-slate-600'
-                    : 'bg-amber-100 text-amber-700'
-                }`}>
-                  {selectedIncident.status === 'Unresolved' ? 'Pending Verification' : selectedIncident.status}
-                </span>
-                {selectedIncident.drainageAssetId && (
-                  <span className="rounded bg-blue-100 px-1.5 py-0.5 font-bold text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">
-                    Drainage Asset: {selectedIncident.drainageAssetId}
-                  </span>
-                )}
-              </div>
-
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                {selectedIncident.landmark} · {selectedIncident.reportedBy}
-              </p>
-              {selectedIncident.hasCoords ? (
-                <p className="text-[10px] text-slate-400">
-                  GPS: {selectedIncident.lat?.toFixed(4)}, {selectedIncident.lng?.toFixed(4)}
-                </p>
-              ) : (
-                <p className="text-[10px] font-bold text-amber-500">
-                  GPS Coordinates: Pending Field Verification
-                </p>
-              )}
-
-              <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-300">
-                {selectedIncident.description}
-              </p>
-
-              <div className="mt-3.5 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onNavigateToDrainageActions) {
-                      onNavigateToDrainageActions(
-                        activeDistrict.id,
-                        selectedIncident.drainageAssetId || selectedIncident.drainageActionId,
-                        selectedIncident.location
-                      );
-                    }
-                  }}
-                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#1d6fd8] px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#1558a8]"
-                >
-                  <span>{selectedIncident.drainageAssetId ? 'View in Drainage Module' : 'View Drainage Action'}</span>
-                  <ArrowRight size={13} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Selected Estimated Risk Area Popup Card */}
-          {selectedRiskArea && (
-            <div className="absolute left-3 top-16 z-30 max-w-sm rounded-2xl border border-amber-200 bg-white/95 p-4 shadow-xl backdrop-blur dark:border-amber-900 dark:bg-[#111a2b]/95">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase ${
-                      selectedRiskArea.severity === 'Severe'
-                        ? 'bg-rose-100 text-rose-700'
-                        : selectedRiskArea.severity === 'High'
-                        ? 'bg-amber-100 text-amber-700'
-                        : selectedRiskArea.severity === 'Moderate'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-emerald-100 text-emerald-700'
-                    }`}
-                  >
-                    ⬡ {selectedRiskArea.severity} Risk
-                  </span>
-                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                    Score: {selectedRiskArea.riskScore}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedRiskArea(null)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <X size={15} />
-                </button>
-              </div>
-
-              <h3 className="mt-2 text-sm font-bold text-slate-900 dark:text-white">
-                {selectedRiskArea.name}
-              </h3>
-
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
                 <span className="rounded bg-amber-50 px-1.5 py-0.5 font-bold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                  Estimated Risk
+                  Waterlogging
                 </span>
-                {selectedRiskArea.confidence && (
-                  <span className="rounded bg-slate-100 px-1.5 py-0.5 font-bold text-slate-600 dark:bg-slate-800">
-                    Confidence: {Math.round(selectedRiskArea.confidence * 100)}%
-                  </span>
-                )}
-                {selectedRiskArea.dataSource && (
-                  <span className="rounded bg-slate-100 px-1.5 py-0.5 font-bold text-slate-600 dark:bg-slate-800">
-                    {selectedRiskArea.dataSource}
-                  </span>
-                )}
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 font-bold text-slate-600 dark:bg-slate-800">
+                  Risk: {Math.round(((selectedIncident as any).riskScore || 0) * 100)}%
+                </span>
               </div>
 
-              {selectedRiskArea.factors && (
-                <div className="mt-2 space-y-1">
-                  {selectedRiskArea.factors.rainfall24hMm !== undefined && (
-                    <p className="text-[10px] text-slate-500">
-                      🌧 Rainfall 24h: <strong className="text-slate-700 dark:text-slate-200">{selectedRiskArea.factors.rainfall24hMm} mm</strong>
-                    </p>
-                  )}
-                  {selectedRiskArea.factors.historicalIncidents !== undefined && (
-                    <p className="text-[10px] text-slate-500">
-                      📋 Historical incidents: <strong className="text-slate-700 dark:text-slate-200">{selectedRiskArea.factors.historicalIncidents}</strong>
-                    </p>
-                  )}
-                  {selectedRiskArea.factors.drainageLinesInDistrict !== undefined && (
-                    <p className="text-[10px] text-slate-500">
-                      🔩 Drainage lines: <strong className="text-slate-700 dark:text-slate-200">{selectedRiskArea.factors.drainageLinesInDistrict.toLocaleString()}</strong>
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                {selectedRiskArea.recommendedAction}
+              <p className="text-[10px] text-slate-500 mt-1">
+                🌧 Modelled depth: <strong className="text-slate-700 dark:text-slate-200">{selectedIncident.waterDepthText}</strong>
               </p>
 
-              {selectedRiskArea.updatedAtText && (
-                <p className="mt-1 text-[10px] text-slate-400">Updated: {selectedRiskArea.updatedAtText}</p>
+              {selectedIncident.updatedAtText && (
+                <p className="mt-1 text-[10px] text-slate-400">Updated: {selectedIncident.updatedAtText}</p>
               )}
 
               <div className="mt-3.5">
@@ -2382,7 +2326,7 @@ export function FloodMapPage({
                   type="button"
                   onClick={() => {
                     if (onNavigateToDrainageActions) {
-                      onNavigateToDrainageActions(activeDistrict.id, undefined, selectedRiskArea.name);
+                      onNavigateToDrainageActions(activeDistrict.id, undefined, selectedIncident.name);
                     }
                   }}
                   className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-amber-500 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-amber-600"
@@ -2614,26 +2558,7 @@ export function FloodMapPage({
                       />
                     </label>
 
-                    {/* Flood Risk Model Overlay */}
-                    <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 p-3 transition hover:bg-slate-100/70 dark:border-slate-800 dark:bg-[#162234]">
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-sm">⬡</span>
-                        <div>
-                          <p className="text-xs font-bold text-slate-900 dark:text-white">
-                            Flood Risk Model Overlay
-                          </p>
-                          <p className="text-[10px] text-slate-500">
-                            Model-estimated catchment risk zones (H3 Res 7)
-                          </p>
-                        </div>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={overlayFloodRiskZones}
-                        onChange={(e) => setOverlayFloodRiskZones(e.target.checked)}
-                        className="h-4 w-4 rounded text-[#1d6fd8] accent-[#1d6fd8]"
-                      />
-                    </label>
+
 
 
                     {/* Water Level Gauge Stations */}
@@ -2749,9 +2674,9 @@ export function FloodMapPage({
               <h3 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white">
                 Waterlogging Locations
               </h3>
-              {/* Sub-tabs: All / Confirmed / Estimated */}
+              {/* Sub-tabs: All / With GPS / No GPS */}
               <div className="flex items-center gap-0.5 rounded-xl bg-slate-100 p-0.5 dark:bg-slate-800">
-                {(['all', 'confirmed', 'estimated'] as const).map((tab) => (
+                {(['all', 'mapped', 'unmapped'] as const).map((tab) => (
                   <button
                     key={tab}
                     type="button"
@@ -2763,25 +2688,26 @@ export function FloodMapPage({
                     }`}
                   >
                     {tab === 'all'
-                      ? `All (${summaryCounts.totalLocations})`
-                      : tab === 'confirmed'
-                      ? `Confirmed (${summaryCounts.confirmedMapped})`
-                      : `Est. Risk (${summaryCounts.estimatedTotal})`}
+                      ? `All (${summaryCounts.confirmedTotal})`
+                      : tab === 'mapped'
+                      ? `With GPS (${summaryCounts.confirmedMapped})`
+                      : `No GPS (${summaryCounts.confirmedUnmapped})`}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Scrollable list of reports — filtered by right-panel tab */}
+            {/* Scrollable list of genuine verified reports */}
             <div className="mt-3 flex flex-1 flex-col divide-y divide-slate-100 overflow-y-auto max-h-[460px] dark:divide-slate-800">
               {(() => {
-                const showConfirmed = rightPanelTab === 'all' || rightPanelTab === 'confirmed';
-                const showEstimated = rightPanelTab === 'all' || rightPanelTab === 'estimated';
-                const confirmedItems = showConfirmed ? filteredIncidents : [];
-                const estimatedItems = showEstimated ? filteredRiskAreas : [];
-                const hasItems = confirmedItems.length > 0 || estimatedItems.length > 0;
+                const listItems =
+                  rightPanelTab === 'mapped'
+                    ? mappedIncidents
+                    : rightPanelTab === 'unmapped'
+                    ? unmappedIncidents
+                    : filteredIncidents;
 
-                if (!hasItems) return (
+                if (listItems.length === 0) return (
                   <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-[#1d6fd8] dark:bg-blue-950/60 dark:text-blue-300 mb-3">
                       <CheckCircle2 size={24} />
@@ -2801,16 +2727,15 @@ export function FloodMapPage({
                 );
 
                 return <>
-                  {confirmedItems.map((inc) => {
+                  {listItems.map((inc) => {
                     const isSelected = selectedIncident?.id === inc.id;
                     return (
                       <div
                         key={inc.id}
                         onClick={() => {
                           setSelectedIncident(inc);
-                          setSelectedRiskArea(null);
                           if (inc.hasCoords && inc.lat !== null && inc.lng !== null) {
-                            mapRef.current?.flyTo({ center: [inc.lng, inc.lat], zoom: 13, duration: 800 });
+                            mapRef.current?.flyTo({ center: [inc.lng, inc.lat], zoom: 13, duration: 350 });
                           }
                         }}
                         className={`group flex cursor-pointer items-center justify-between gap-3 py-3 transition hover:bg-slate-50/80 dark:hover:bg-slate-800/50 ${
@@ -2818,11 +2743,9 @@ export function FloodMapPage({
                         }`}
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white ${
-                            inc.severity === 'Severe' ? 'bg-rose-500' : inc.severity === 'High' ? 'bg-orange-500' : inc.severity === 'Moderate' ? 'bg-yellow-500' : 'bg-emerald-500'
-                          }`}>
-                            <Waves size={16} />
-                          </span>
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center">
+                            <SeverityMarkerIcon severity={inc.severity} size={28} />
+                          </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <p className="truncate text-xs font-bold text-slate-900 dark:text-white group-hover:text-[#1d6fd8]">{inc.name}</p>
@@ -2852,39 +2775,6 @@ export function FloodMapPage({
                             {inc.status === 'Unresolved' ? 'Pending' : inc.status}
                           </span>
                         </div>
-                      </div>
-                    );
-                  })}
-
-                  {estimatedItems.map((ra) => {
-                    const isSelected = selectedRiskArea?.h3Index === ra.h3Index;
-                    return (
-                      <div
-                        key={ra.h3Index}
-                        onClick={() => {
-                          setSelectedRiskArea(ra);
-                          setSelectedIncident(null);
-                          if (ra.lat !== null && ra.lng !== null) {
-                            mapRef.current?.flyTo({ center: [ra.lng, ra.lat], zoom: 13, duration: 800 });
-                          }
-                        }}
-                        className={`group flex cursor-pointer items-center justify-between gap-3 py-3 transition hover:bg-amber-50/40 dark:hover:bg-amber-950/20 ${
-                          isSelected ? 'bg-amber-50/60 dark:bg-amber-950/30' : ''
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white text-sm ${
-                            ra.severity === 'Severe' ? 'bg-rose-500' : ra.severity === 'High' ? 'bg-orange-500' : ra.severity === 'Moderate' ? 'bg-yellow-500' : 'bg-emerald-500'
-                          }`}>⬡</span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-bold text-slate-900 dark:text-white group-hover:text-amber-700 dark:group-hover:text-amber-300">{ra.name}</p>
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400">{ra.severity} Risk · Score {ra.riskScore} · {Math.round(ra.confidence * 100)}% confidence</p>
-                            {ra.updatedAtText && <p className="text-[10px] text-slate-400">{ra.updatedAtText}</p>}
-                          </div>
-                        </div>
-                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-300 shrink-0">
-                          Est. Risk
-                        </span>
                       </div>
                     );
                   })}
@@ -2934,7 +2824,7 @@ export function FloodMapPage({
                       onClick={() => {
                         setSelectedIncident(inc);
                         if (inc.hasCoords && inc.lat !== null && inc.lng !== null) {
-                          mapRef.current?.flyTo({ center: [inc.lng, inc.lat], zoom: 13, duration: 800 });
+                          mapRef.current?.flyTo({ center: [inc.lng, inc.lat], zoom: 13, duration: 350 });
                         }
                       }}
                       className="cursor-pointer transition hover:bg-slate-50 dark:hover:bg-slate-800/50"
@@ -2945,7 +2835,7 @@ export function FloodMapPage({
                       </td>
                       <td className="py-2 px-1.5">
                         <span
-                          className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                          className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
                             inc.severity === 'Severe'
                               ? 'bg-rose-50 text-rose-700'
                               : inc.severity === 'High'
@@ -2955,6 +2845,7 @@ export function FloodMapPage({
                               : 'bg-emerald-50 text-emerald-700'
                           }`}
                         >
+                          <SeverityMarkerIcon severity={inc.severity} size={13} />
                           {inc.severity}
                         </span>
                       </td>
@@ -3020,7 +2911,7 @@ export function FloodMapPage({
                     <tr
                       key={wl.id}
                       onClick={() => {
-                        mapRef.current?.flyTo({ center: [wl.lng, wl.lat], zoom: 13, duration: 800 });
+                        mapRef.current?.flyTo({ center: [wl.lng, wl.lat], zoom: 13, duration: 350 });
                       }}
                       className="cursor-pointer transition hover:bg-slate-50 dark:hover:bg-slate-800/50"
                     >

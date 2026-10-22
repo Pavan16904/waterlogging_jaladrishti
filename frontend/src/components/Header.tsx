@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import {
-  Bell,
   BrainCircuit,
   CloudRain,
   ChevronDown,
@@ -46,22 +45,6 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [ageSeconds, setAgeSeconds] = useState<number | null>(null);
   const [connected, setConnected] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-
-  // Deduplicate and filter active alerts
-  const activeAlerts = useMemo(() => {
-    if (!alerts || !Array.isArray(alerts)) return [];
-    const seen = new Set<string>();
-    return alerts.filter((a: any) => {
-      const key = `${a.id || a.title}_${a.districtId || a.district}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return !dismissedIds.has(a.id || key);
-    });
-  }, [alerts, dismissedIds]);
-
-  const displayCount = activeAlerts.length;
 
   const actionHandlers: Record<HeaderAction, () => void> = {
     eoc: onOpenEoc,
@@ -130,7 +113,7 @@ export const Header: React.FC<HeaderProps> = ({
     { label: 'Flood Map', Icon: Map, tab: 'map' as const },
     { label: 'Weather & Radar', Icon: CloudRain, tab: 'weather' as const },
     { label: 'Crop Advisor', Icon: Sprout, tab: 'crop-water' as const },
-    { label: 'Drainage Actions', Icon: Shield, tab: 'drainage' as const },
+    { label: 'Drainage Advisory', Icon: Shield, tab: 'drainage' as const },
     { label: 'Emergency EOC', Icon: Siren, action: 'eoc' as const },
     { label: 'Citizen SOS', Icon: Users, action: 'sos' as const },
     { label: 'AI Models', Icon: BrainCircuit, action: 'models' as const },
@@ -185,112 +168,6 @@ export const Header: React.FC<HeaderProps> = ({
             <span className={`h-2 w-2 rounded-full ${!connected || ageSeconds === null || ageSeconds > 3600 ? 'bg-red-500' : ageSeconds < 900 ? 'bg-emerald-500' : 'bg-amber-500'}`} />
             <span className="hidden sm:inline">{statusLabel}</span>
           </a>
-
-          <div className="relative">
-            <button
-              type="button"
-              aria-label={`Notifications${displayCount > 0 ? `, ${displayCount} unread` : ''}`}
-              aria-expanded={notificationsOpen}
-              onClick={() => setNotificationsOpen((open) => !open)}
-              className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              <Bell size={19} />
-              {displayCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                  {displayCount > 99 ? '99+' : displayCount}
-                </span>
-              )}
-            </button>
-            {notificationsOpen && (
-              <div className="absolute right-0 top-12 z-50 w-80 sm:w-96 rounded-2xl border border-slate-200 bg-white p-4 text-xs shadow-2xl dark:border-slate-700 dark:bg-[#111a2b] text-slate-900 dark:text-slate-100 flex flex-col max-h-[480px]">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                  <div>
-                    <p className="font-extrabold text-sm text-slate-900 dark:text-white">Active Alerts & Telemetry</p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      {displayCount > 0 ? `${displayCount} unread incident${displayCount === 1 ? '' : 's'}` : 'All alerts cleared'}
-                    </p>
-                  </div>
-                  {displayCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const allIds = new Set<string>(activeAlerts.map((a: any) => String(a.id || a.title)));
-                        setDismissedIds(allIds);
-                      }}
-                      className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 hover:underline cursor-pointer"
-                    >
-                      Clear All
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex-1 overflow-y-auto space-y-2.5 py-3 pr-1">
-                  {activeAlerts.length === 0 ? (
-                    <div className="py-8 text-center text-slate-400 text-xs">
-                      <p className="font-semibold text-slate-600 dark:text-slate-300">No active warnings</p>
-                      <p className="text-[10px] mt-1 text-slate-400">All district telemetric queues and citizen SOS logs are clear.</p>
-                    </div>
-                  ) : (
-                    activeAlerts.map((alert: any) => (
-                      <div
-                        key={alert.id || alert.title}
-                        className="p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 flex flex-col gap-1 hover:border-slate-300 dark:hover:border-slate-700 transition"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                            alert.level === 'CRITICAL' ? 'bg-rose-500 text-white' :
-                            alert.level === 'WARNING' ? 'bg-amber-500 text-white' :
-                            'bg-blue-600 text-white'
-                          }`}>
-                            {alert.level || 'ALERT'}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            {alert.timestamp ? new Date(alert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent'}
-                          </span>
-                        </div>
-                        <p className="font-bold text-xs text-slate-900 dark:text-white line-clamp-1">{alert.title}</p>
-                        <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
-                          <span>{alert.district || 'Karnataka State'}</span>
-                          <span className="font-semibold text-cyan-600 dark:text-cyan-400">
-                            {alert.status === 'VERIFIED' ? 'Field Verified' : 'Citizen SOS (Pending)'}
-                          </span>
-                        </div>
-                        {alert.action && (
-                          <p className="text-[10px] text-slate-600 dark:text-slate-300 italic line-clamp-1 mt-0.5">
-                            Action: {alert.action}
-                          </p>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNotificationsOpen(false);
-                            onOpenEoc();
-                          }}
-                          className="mt-1 text-left text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                        >
-                          View in Emergency Operations Center →
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-[10px] text-slate-400">
-                  <span>Authoritative DB & Telemetry</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNotificationsOpen(false);
-                      onOpenEoc();
-                    }}
-                    className="font-bold text-slate-600 dark:text-slate-300 hover:underline cursor-pointer"
-                  >
-                    Open Full EOC
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
 
           <details className="jd-account-menu relative">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full p-1 hover:bg-slate-100 dark:hover:bg-slate-800">

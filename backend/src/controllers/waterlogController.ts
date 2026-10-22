@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { query } from '../db/index.js';
-import { seedWaterlogHexScoresIfEmpty } from '../services/waterlogService.js';
+import { seedWaterlogHexScoresIfEmpty, districtWaterloggingDepthCm } from '../services/waterlogService.js';
 import { canonicalDistrictId } from '../utils/districtUtils.js';
 // @ts-ignore
 import * as h3 from 'h3-js';
@@ -95,12 +95,59 @@ export async function getWaterlogHexes(req: Request, res: Response): Promise<voi
       return;
     }
 
+    // Incorporate real-time rainfall from weather_snapshots to adjust risk_score dynamically
+    let realTimeRainfallMm = 0;
+    if (districtId) {
+      try {
+        const weatherRes = await query(
+          'SELECT payload FROM weather_snapshots WHERE district_id = ? ORDER BY id DESC LIMIT 1',
+          [districtId]
+        );
+        if (weatherRes.rows.length > 0) {
+          const payload = typeof weatherRes.rows[0].payload === 'string'
+            ? JSON.parse(weatherRes.rows[0].payload)
+            : weatherRes.rows[0].payload;
+          realTimeRainfallMm = parseFloat(payload?.current?.precipitation || payload?.daily?.precipitation_sum?.[0] || '0') || 0;
+        }
+      } catch {}
+    }
+
+    const rainMultiplier = realTimeRainfallMm > 0 ? Math.min(1.75, 1.0 + (realTimeRainfallMm / 25)) : 1.0;
+
     res.json({
       success: true,
       valid_time: validTime,
       resolution,
       count: result.rows.length,
-      hexes: result.rows
+      real_time_rainfall_mm: realTimeRainfallMm,
+      hexes: result.rows.map((row) => {
+        let comp: Record<string, any> = {};
+        try {
+          comp = typeof row.components === 'string' ? JSON.parse(row.components) : (row.components || {});
+        } catch {}
+
+        let baseScore = typeof row.risk_score === 'number' ? row.risk_score : parseFloat(row.risk_score || '0.3');
+        if (baseScore > 1) baseScore = baseScore / 100;
+        const dynamicRiskScore = Math.min(0.99, Math.max(0.12, Math.round(baseScore * rainMultiplier * 100) / 100));
+
+        let dynamicRiskClass = 'Minor';
+        if (dynamicRiskScore >= 0.75) dynamicRiskClass = 'Severe';
+        else if (dynamicRiskScore >= 0.50) dynamicRiskClass = 'High';
+        else if (dynamicRiskScore >= 0.25) dynamicRiskClass = 'Moderate';
+
+        comp = {
+          ...comp,
+          rainfall_mm: comp.rainfall_mm ? Math.round(comp.rainfall_mm * rainMultiplier * 10) / 10 : realTimeRainfallMm,
+          waterlogging_depth_cm: districtWaterloggingDepthCm(row.district_id, dynamicRiskScore),
+        };
+
+        return {
+          ...row,
+          risk_score: dynamicRiskScore,
+          risk_class: dynamicRiskClass,
+          components: comp,
+        };
+      }),
     });
   } catch (err: any) {
     console.error('getWaterlogHexes error:', err);

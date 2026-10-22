@@ -127,7 +127,7 @@ export const api = {
 
   // District-specific waterlogging incidents for advisory evidence
   getDistrictIncidents: async (districtId: string): Promise<{ incidents: any[]; count: number }> => {
-    const res = await axios.get(`${API_BASE}/incidents?district_id=${encodeURIComponent(districtId)}&limit=20`);
+    const res = await axios.get(`${API_BASE}/incidents?district_id=${encodeURIComponent(districtId)}&limit=100`);
     return res.data;
   },
 
@@ -138,7 +138,7 @@ export const api = {
   },
 
   // District-specific drainage assets from database
-  getDrainageAssets: async (districtId: string, limit = 25): Promise<any> => {
+  getDrainageAssets: async (districtId: string, limit = 100): Promise<any> => {
     const res = await axios.get(`${API_BASE}/drainage/assets?district_id=${encodeURIComponent(districtId)}&limit=${limit}`);
     return res.data;
   },
@@ -285,6 +285,7 @@ export const api = {
     has_coords?: boolean;
     date_from?: string;
     date_to?: string;
+    limit?: number;
   }): Promise<any> => {
     const q = new URLSearchParams();
     if (params?.district_id) q.set('district_id', params.district_id);
@@ -295,6 +296,7 @@ export const api = {
     if (params?.has_coords !== undefined) q.set('has_coords', String(params.has_coords));
     if (params?.date_from) q.set('date_from', params.date_from);
     if (params?.date_to) q.set('date_to', params.date_to);
+    if (params?.limit) q.set('limit', String(params.limit));
     const queryStr = q.toString() ? `?${q.toString()}` : '';
     const res = await axios.get(`${API_BASE}/incidents${queryStr}`);
     return res.data;
