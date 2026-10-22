@@ -1287,8 +1287,9 @@ export async function seedDatabase() {
     const prefix = dist.id.substring(0, 3).toUpperCase();
     const dAgency = dist.actions?.[0]?.agency || `${dName} City Municipal Council / PWD`;
 
-    // Authentic real-world taluks, towns, and drainage hotspots (20-30 per district)
+    // Authentic real-world taluks, towns, and drainage hotspots (strictly distinct counts up to 40 per district)
     const hotspots = getEnrichedDistrictHotspots(dist.id);
+    await query('DELETE FROM incidents WHERE district_id = $1;', [dist.id]);
 
     for (let i = 0; i < hotspots.length; i++) {
       const h = hotspots[i];

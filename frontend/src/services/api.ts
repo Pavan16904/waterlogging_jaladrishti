@@ -154,8 +154,14 @@ export const api = {
     return res.data;
   },
 
-  getLiveAlerts: async (): Promise<{ count: number; alerts: any[] }> => {
-    const res = await axios.get(`${API_BASE}/realtime/live-alerts`);
+  getLiveAlerts: async (params?: { district_id?: string; status?: string; include_resolved?: boolean; limit?: number }): Promise<{ count: number; alerts: any[] }> => {
+    const q = new URLSearchParams();
+    if (params?.district_id) q.set('district_id', params.district_id);
+    if (params?.status) q.set('status', params.status);
+    if (params?.include_resolved) q.set('include_resolved', 'true');
+    if (params?.limit) q.set('limit', String(params.limit));
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    const res = await axios.get(`${API_BASE}/realtime/live-alerts${qs}`);
     return res.data;
   },
 

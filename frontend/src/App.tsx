@@ -10,7 +10,6 @@ import { DrainageActionsPage } from './components/DrainageActionsPage';
 import { ModelEvaluationModal } from './components/ModelEvaluationModal';
 import { ExportReportModal } from './components/ExportReportModal';
 import { LiveIoTSensorsDrawer } from './components/LiveIoTSensorsDrawer';
-import { EmergencyOpsModal } from './components/EmergencyOpsModal';
 import { CitizenLifelineModal } from './components/CitizenLifelineModal';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLanguage } from './context/LanguageContext';
@@ -103,7 +102,6 @@ export function App() {
   const [isModelOpen, setIsModelOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isIoTDrawerOpen, setIsIoTDrawerOpen] = useState<boolean>(false);
-  const [isEmergencyOpsOpen, setIsEmergencyOpsOpen] = useState<boolean>(false);
   const [isCitizenLifelineOpen, setIsCitizenLifelineOpen] = useState<boolean>(false);
 
   // Phase 4: live update timestamp — drives the Header freshness chip
@@ -261,7 +259,7 @@ export function App() {
     try {
       const [iotData, alertsData] = await Promise.all([
         api.getIoTSensors(),
-        api.getLiveAlerts()
+        api.getLiveAlerts({ limit: 1000 })
       ]);
 
       if (iotData && iotData.sensors) {
@@ -321,7 +319,6 @@ export function App() {
         setTheme={setTheme}
         notificationCount={liveAlerts.length}
         alerts={liveAlerts}
-        onOpenEoc={() => setIsEmergencyOpsOpen(true)}
         onOpenSos={() => setIsCitizenLifelineOpen(true)}
         onOpenModels={() => setIsModelOpen(true)}
         onOpenReports={() => setIsExportOpen(true)}
@@ -372,7 +369,6 @@ export function App() {
                 onDistrictChange={setSelectedDistrict}
                 scoresKey={scoresKey}
                 selectedDate={selectedDate}
-                onOpenEoc={() => setIsEmergencyOpsOpen(true)}
                 onNavigateToDrainageActions={(districtId, actionId, location) => {
                   if (districtId) setSelectedDistrict(districtId);
                   setHighlightDrainageActionId(actionId || null);
@@ -467,14 +463,7 @@ export function App() {
         onRefresh={loadRealtimeTelemetry}
       />
 
-      {/* Global Emergency Operations Center (EOC) Modal */}
-      <EmergencyOpsModal
-        isOpen={isEmergencyOpsOpen}
-        onClose={() => setIsEmergencyOpsOpen(false)}
-        alerts={liveAlerts}
-        selectedDistrict={selectedDistrict}
-        onRefreshAlerts={loadRealtimeTelemetry}
-      />
+
 
       {/* Global Citizen Lifeline, Crowdsourced SOS & Shelter Center */}
       <CitizenLifelineModal

@@ -43,6 +43,7 @@ router.get('/stream', streamEvents);
 router.get('/incidents', getIncidents);
 router.post('/incidents', createIncident);
 router.patch('/incidents/:id/status', updateIncidentStatus);
+router.patch('/realtime/incidents/:id/status', updateIncidentStatus);
 
 // Genuine Satellite-Derived Flood & Water Extent (NASA OPERA DSWx-S1 Sentinel-1 SAR)
 router.get('/satellite/opera-dswx', getOperaFloodObservations);

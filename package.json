@@ -3,8 +3,14 @@
   "version": "2.0.0",
   "description": "AI-Based Waterlogging Detection and Drainage Advisory System Using Multi-Source Satellite Imagery",
   "scripts": {
-    "dev": "concurrently -n \"BACKEND,FRONTEND,ML\" -c \"blue,cyan,magenta\" \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\" \"python -m uvicorn main:app --app-dir ml_service --reload --port 8000\"",
-    "start": "concurrently -n \"BACKEND,FRONTEND,ML\" -c \"blue,cyan,magenta\" \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\" \"python -m uvicorn main:app --app-dir ml_service --port 8000\"",
+    "live": "start_live.bat",
+    "status": "node scripts/status.mjs",
+    "stop": "node scripts/stop.mjs",
+    "dev": "node scripts/runner.mjs",
+    "start": "node scripts/runner.mjs",
+    "pm2:start": "npx pm2 start ecosystem.config.cjs",
+    "pm2:stop": "npx pm2 stop all",
+    "pm2:status": "npx pm2 status",
     "ml": "python -m uvicorn main:app --app-dir ml_service --port 8000",
     "backend": "npm --prefix backend run dev",
     "frontend": "npm --prefix frontend run dev",
@@ -13,6 +19,7 @@
     "build": "cd backend && npm run build && cd ../frontend && npm run build"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "pm2": "^7.1.0"
   }
 }

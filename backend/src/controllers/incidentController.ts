@@ -223,7 +223,7 @@ export async function createIncident(req: Request, res: Response) {
 export async function updateIncidentStatus(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, assigned_agency, assignedAgency } = req.body;
 
     if (!id || !status) {
       return res.status(400).json({
@@ -232,14 +232,21 @@ export async function updateIncidentStatus(req: Request, res: Response) {
       });
     }
 
+    const cleanStatus = status.trim().toUpperCase();
+    const agency = (assigned_agency || assignedAgency || '').trim();
     const now = new Date().toISOString();
-    await query('UPDATE incidents SET status = ?, updated_at = ? WHERE id = ?', [status, now, id]);
+
+    if (agency) {
+      await query('UPDATE incidents SET status = ?, assigned_agency = ?, updated_at = ? WHERE id = ?', [cleanStatus, agency, now, id]);
+    } else {
+      await query('UPDATE incidents SET status = ?, updated_at = ? WHERE id = ?', [cleanStatus, now, id]);
+    }
 
     return res.json({
       success: true,
-      message: `Incident ${id} updated to status ${status}`,
+      message: `Incident ${id} updated to status ${cleanStatus}`,
       id,
-      status,
+      status: cleanStatus,
       updated_at: now
     });
   } catch (error: any) {

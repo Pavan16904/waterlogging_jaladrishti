@@ -11,7 +11,7 @@ Urban flooding, rural waterlogging, and soil saturation present acute risks to r
 1. **Satellite-Based Flood Inundation Intelligence**: Autonomous detection, delineation, and severity zoning of waterlogging using Copernicus **Sentinel-1 C-band Synthetic Aperture Radar (SAR)**, **Sentinel-2 Multispectral Optical (MSI)**, **SRTM 30m Digital Elevation Models (DEM)**, and live meteorological feeds.
 2. **Live Doppler Weather Radar & Advance Early Warning**: Ingestion of live Doppler radar reflectivity tiles (via RainViewer API) with a 750ms animated temporal playback loop, coupled with advance storm lead-time modeling (predicting peak precipitation rates and anticipated sump waterlogging depths hours ahead of inundation).
 3. **IoT Ultrasonic Sump Mesh & Automated Pump Actuation**: Real-time telemetry monitoring from distributed IoT ultrasonic water level sensors across urban flood hotspots, enabling automated or manual pump actuation (`AUTO`, `MANUAL_ON`, `MANUAL_OFF`, `EMERGENCY_BOOST`).
-4. **Emergency Operations Center (EOC) & Citizen Lifeline Hub**: Unified emergency incident escalation, high-capacity pump crew dispatch, crowdsourced citizen SOS reporting, relief camp geolocation, and post-flood epidemic/crop salvage advisory.
+4. **Citizen Lifeline & Field Incident Management Hub**: Crowdsourced citizen SOS reporting, geolocated relief camp directory, public disease prevention guides, and post-flood crop salvage agronomic advisory.
 5. **Precision Agro-Hydrological Water Budgeting**: Implementation of the **FAO-56 Dual Crop Coefficient** evapotranspiration methodology across **100+ Karnataka crops** and **12 regional soil series**, providing plain-language irrigation prescriptions to prevent over-watering and root rot.
 6. **Full Tri-Lingual Localization (i18n)**: Comprehensive support for English, Kannada (ಕನ್ನಡ), and Hindi (हिन्दी) across all dashboards, satellite overlays, weather observatory tables, and disaster protocols.
 
@@ -43,21 +43,20 @@ flowchart TB
     subgraph BackendGateway["Backend API Gateway (Express TS :5000)"]
         ROUTER["Express REST Router (/api)"]
         CACHE["Climatological & Radar Cache (In-Memory)"]
-        DB[(PostgreSQL 18 Database<br/>waterlogging_db)]
+        DB[(PostgreSQL / SQLite Fallback<br/>backend/data/waterlogging.sqlite)]
         PUMP_ACT["Pump Actuator Controller Service"]
         ALERT_ENG["Emergency Alert Dispatch Engine"]
     end
 
-    subgraph FrontendApp["Frontend Dashboard (React + Vite :3000)"]
+    subgraph FrontendApp["Frontend Dashboard (React + Vite :3001)"]
         I18N["Global i18n Context (EN / Kannada / Hindi)"]
-        PAGE1["1. Satellite Flood Map<br/>(Leaflet Hybrid / Radar Overlay / IoT Pins)"]
+        PAGE1["1. Satellite Flood Map<br/>(Leaflet Hybrid / Radar Overlay / Stable Severity Pins)"]
         PAGE2["2. Weather Observatory<br/>(31 Karnataka Districts 10d Forecast)"]
         PAGE3["3. Crop Water Advisor<br/>(100+ Crops, 12 Soils, FAO-56 Wizard)"]
         PAGE4["4. Drainage Action Matrix<br/>(P1/P2/P3 Civil Work Orders)"]
-        MODAL1["Emergency EOC Incident Dispatch Modal"]
-        MODAL2["Citizen Lifeline & Public SOS Hub"]
-        MODAL3["Live IoT Sensors & Pump Drawer"]
-        MODAL4["Precaution Protocol Matrix"]
+        MODAL1["Citizen Lifeline & Public SOS Hub"]
+        MODAL2["Live IoT Sensors & Pump Drawer"]
+        MODAL3["Precaution Protocol Matrix"]
     end
 
     DataSources --> FE
@@ -74,7 +73,7 @@ flowchart TB
     DRAIN --> BackendGateway
     BackendGateway <--> DB
     BackendGateway --> FrontendApp
-    I18N --> PAGE1 & PAGE2 & PAGE3 & PAGE4 & MODAL1 & MODAL2 & MODAL3 & MODAL4
+    I18N --> PAGE1 & PAGE2 & PAGE3 & PAGE4 & MODAL1 & MODAL2 & MODAL3
 ```
 
 ---
@@ -213,7 +212,7 @@ To bridge high-altitude satellite observations with ground-level municipal infra
 - **Warning & Danger Triggers**:
   - `NORMAL`: Depth $< \text{Warning Threshold}$
   - `WARNING`: $\text{Warning Threshold} \le \text{Depth} < \text{Danger Threshold}$
-  - `DANGER`: $\text{Depth} \ge \text{Danger Threshold}$ (automatically escalates to EOC)
+  - `DANGER`: $\text{Depth} \ge \text{Danger Threshold}$ (automatically triggers critical emergency alert and pump auto-actuation)
 
 ### 6.2 Pump Actuator Control Modes
 Authorized operators or automated rules can dispatch actuator commands through the backend API:
@@ -224,16 +223,9 @@ Authorized operators or automated rules can dispatch actuator commands through t
 
 ---
 
-## 7. Emergency Operations Center (EOC) & Citizen Lifeline Hub
+## 7. Citizen Lifeline & Community Resilience Hub
 
-### 7.1 Emergency Operations Center (EOC)
-The EOC modal provides civil disaster authorities (BBMP, KSDMA, Fire & Emergency, SDRF) with:
-- **Unified Incident Escalation**: Immediate alerts categorizing threat levels (`CRITICAL`, `WARNING`, `ADVISORY`).
-- **Resource Allocation Matrix**: Dedicated dispatch of 150HP dewatering pumps, jetting machines, and emergency personnel.
-- **Printable Incident Briefs**: Generates standardized official dispatch briefs formatted for municipal work crews.
-
-### 7.2 Citizen Lifeline & Community Resilience Hub
-The Citizen Lifeline modal provides citizen-facing emergency support:
+The Citizen Lifeline modal provides citizen-facing and field emergency response support:
 - **Crowdsourced Waterlogging SOS**: Allows citizens to submit geo-tagged incident reports specifying water depth (ankle, knee, waist, submerged vehicle), landmark, and contact details.
 - **Relief Shelters Directory**: Geocoded shelter locations, capacity tracking, and emergency helpline contact numbers.
 - **Public Health & Disease Prevention**: Precautionary medical guidance for leptospirosis, cholera, dengue, and safe drinking water protocols.
@@ -509,32 +501,38 @@ erDiagram
 
 ## 14. Operational Verification & Testing Results
 
-All core microservices and data pipelines were validated through end-to-end operational tests:
+All core microservices and data pipelines are validated through end-to-end automated operational tests:
 - **FastAPI ML Microservice (`:8000`)**: Responding `200 OK`, loaded 150-tree Random Forest and XGBoost model artifacts, supporting 100+ crops and 12 soils.
-- **Node.js Express Backend (`:5000`)**: Responding `200 OK`, PostgreSQL 18 connection verified, real-time Open-Meteo and RainViewer radar caching operational.
-- **Vite React Frontend (`:3000`)**: Production bundle built via `tsc && vite build` (`0 errors`), multi-source map tile rendering and responsive tri-lingual switching validated.
+- **Node.js Express Backend (`:5000`)**: Responding `200 OK`, built-in persistent SQLite database (`backend/data/waterlogging.sqlite`) with PostgreSQL fallback, smart initial seeding only when empty, and uncaught error crash resilience.
+- **Vite React Frontend (`:3001`)**: Production bundle built via `tsc && vite build` (`0 errors`), multi-source map tile rendering, zero pin jumping/dancing, and responsive tri-lingual switching validated.
+- **Geographic Pin Stability**: Zero marker position shift or flicker during continuous zoom levels (zoom 6 to 18) and pan events.
+- **District Coverage**: All 31 Karnataka districts populated with strictly distinct counts (ranging from 10 to 40 hotspots each), with 100% of incidents linked to official municipal drainage assets (`DRN-...`).
 
 ---
 
-## 15. Deployment & Execution Instructions
+## 15. Permanent Live Deployment & Background Service Management
 
-To run the complete system locally:
+The system features an integrated process supervisor and Windows detached daemon launcher designed to keep the entire platform **permanently live** in the background:
 
-1. **Prerequisites**:
-   - Python 3.10+ with `scikit-learn`, `xgboost`, `fastapi`, `uvicorn`, `joblib`
-   - Node.js 18+ and npm
-   - PostgreSQL 18 with database `waterlogging_db`
+### 15.1 Architecture & Supervisor Mechanics
+- **`scripts/runner.mjs`**: Central Node.js supervisor that launches Backend, Frontend, and ML microservices, redirects and mirrors logs to `logs/`, performs automatic restart with backoff upon any unexpected exit, and manages graceful shutdowns.
+- **`scripts/start_live.vbs`**: Windows Script Host detached runner (`wscript.exe`) that launches the supervisor in a completely hidden background process (WindowStyle 0), detaching it from the user's terminal session and opening the web dashboard at `http://localhost:3001`.
+- **`start_live.bat`**: 1-click Windows starter script to initiate permanent live execution.
+- **`status_live.bat` / `node scripts/status.mjs`**: Probes TCP connections and HTTP health endpoints across ports 5000, 3001, and 8000, reporting live status and supervisor PIDs.
+- **`stop_live.bat` / `node scripts/stop.mjs`**: Gracefully terminates the supervisor process tree and ensures all listening ports are immediately freed.
+- **`ecosystem.config.cjs`**: Standard PM2 process management configuration for enterprise servers.
 
-2. **Launch All Services with a Single Command**:
-   ```bash
-   npm run dev
-   ```
-   Or use the provided batch script:
-   ```cmd
-   start_all.bat
-   ```
+### 15.2 Operational Commands
 
-3. **Service Access**:
-   - Web Platform UI: [http://localhost:3000](http://localhost:3000)
-   - REST API Gateway: [http://localhost:5000/api](http://localhost:5000/api)
-   - ML Swagger Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+| Command | Action |
+|---|---|
+| `start_live.bat` or `npm run live` | Starts the entire system permanently live in the background (survives terminal closure) |
+| `status_live.bat` or `npm run status` | Inspects live status and HTTP health across all 3 ports |
+| `stop_live.bat` or `npm run stop` | Stops all live background services and frees ports |
+| `npm run dev` | Runs the supervisor in foreground development mode |
+
+### 15.3 Service Endpoints
+- **Frontend Dashboard**: [http://localhost:3001](http://localhost:3001)
+- **REST API Gateway**: [http://localhost:5000/api](http://localhost:5000/api)
+- **Backend Health Check**: [http://localhost:5000/health](http://localhost:5000/health)
+- **FastAPI ML Service Swagger**: [http://localhost:8000/docs](http://localhost:8000/docs)

@@ -417,29 +417,54 @@ export async function updatePumpActuator(req: Request, res: Response) {
  */
 export async function getLiveAlerts(req: Request, res: Response) {
   try {
-    const dbResult = await query(
-      `SELECT * FROM incidents 
-       WHERE status != 'RESOLVED' 
-       ORDER BY created_at DESC 
-       LIMIT 50;`
-    );
+    const { district_id, status, include_resolved, limit } = req.query;
+    let sql = 'SELECT * FROM incidents WHERE 1=1';
+    const params: any[] = [];
+
+    if (district_id && typeof district_id === 'string' && district_id.trim()) {
+      const d = district_id.trim().toLowerCase();
+      if (d !== 'all' && d !== 'all_karnataka' && d !== 'karnataka') {
+        const canon = canonicalDistrictId(d);
+        sql += ' AND (district_id = ? OR district_id = ?)';
+        params.push(canon, d);
+      }
+    }
+
+    if (status && typeof status === 'string' && status.trim() && status.toUpperCase() !== 'ALL') {
+      sql += ' AND status = ?';
+      params.push(status.trim().toUpperCase());
+    } else if (include_resolved !== 'true') {
+      sql += " AND status != 'REJECTED'";
+    }
+
+    sql += ' ORDER BY created_at DESC';
+
+    const maxLimit = limit ? parseInt(limit as string, 10) : 1000;
+    sql += ' LIMIT ?';
+    params.push(maxLimit);
+
+    const dbResult = await query(sql, params);
 
     const alerts = (dbResult.rows || []).map((inc: any) => {
       let level: 'CRITICAL' | 'WARNING' | 'ADVISORY' | 'INFO' = 'ADVISORY';
-      if (inc.urgency === 'critical' || inc.water_depth === 'submerged') {
+      const sev = (inc.severity || '').toLowerCase();
+      const urgency = (inc.urgency || '').toLowerCase();
+      const depth = (inc.water_depth || '').toLowerCase();
+
+      if (urgency === 'critical' || depth === 'submerged' || sev === 'severe' || sev === 'critical') {
         level = 'CRITICAL';
-      } else if (inc.urgency === 'high' || inc.water_depth === 'waist') {
+      } else if (urgency === 'high' || depth === 'waist' || sev === 'high') {
         level = 'WARNING';
       }
 
       return {
         id: inc.id,
         level,
-        district: inc.district_name,
+        district: inc.district_name || inc.district_id,
         districtId: inc.district_id,
-        title: `${String(inc.water_depth).toUpperCase()} Inundation: ${inc.landmark}`,
+        title: `${String(inc.water_depth || 'Inundation').toUpperCase()} Inundation: ${inc.landmark}`,
         message: `Citizen reported ${inc.water_depth} level standing water at ${inc.landmark}. Status: ${inc.status}.`,
-        action: inc.recommended_action,
+        action: inc.recommended_action || 'Deploy drainage crew and inspect stormwater culverts',
         agency: inc.assigned_agency || 'BBMP / KSDMA Monsoon Control Room',
         timestamp: inc.created_at || new Date().toISOString(),
         status: inc.status,

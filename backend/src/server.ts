@@ -3,7 +3,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import apiRoutes from './routes/api.js';
-import { initializeDatabase } from './db/index.js';
+import { initializeDatabase, query } from './db/index.js';
 import { seedDatabase } from './db/seed.js';
 
 dotenv.config();
@@ -37,11 +37,26 @@ async function startServer() {
 
   try {
     await initializeDatabase();
-    await seedDatabase();
+    const existing = await query('SELECT COUNT(*) as count FROM incidents;');
+    const count = Number(existing.rows?.[0]?.count || 0);
+    if (count === 0) {
+      console.log('[*] Database empty. Seeding initial district hotspots...');
+      await seedDatabase();
+    } else {
+      console.log(`[+] Database ready with ${count} incidents.`);
+    }
   } catch (err: any) {
     console.error('[-] Initialization warning:', err.message);
   }
 }
+
+process.on('uncaughtException', (err) => {
+  console.error('[!] Uncaught Exception in backend:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[!] Unhandled Rejection in backend:', reason);
+});
 
 process.on('SIGTERM', () => {
   console.log('[*] SIGTERM received. Gracefully shutting down...');

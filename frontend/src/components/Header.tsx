@@ -8,7 +8,6 @@ import {
   Moon,
   Sprout,
   Sun,
-  Siren,
   Waves,
   Shield,
   Users,
@@ -16,7 +15,7 @@ import {
 import { api } from '../services/api';
 
 export type MainTabType = 'overview' | 'map' | 'weather' | 'crop-water' | 'drainage';
-type HeaderAction = 'eoc' | 'sos' | 'models' | 'reports';
+type HeaderAction = 'sos' | 'models' | 'reports';
 
 interface HeaderProps {
   activeTab: MainTabType;
@@ -25,7 +24,6 @@ interface HeaderProps {
   setTheme: (theme: 'dark' | 'light') => void;
   notificationCount?: number;
   alerts?: any[];
-  onOpenEoc: () => void;
   onOpenSos: () => void;
   onOpenModels: () => void;
   onOpenReports: () => void;
@@ -38,7 +36,6 @@ export const Header: React.FC<HeaderProps> = ({
   setTheme,
   notificationCount = 0,
   alerts = [],
-  onOpenEoc,
   onOpenSos,
   onOpenModels,
   onOpenReports,
@@ -47,7 +44,6 @@ export const Header: React.FC<HeaderProps> = ({
   const [connected, setConnected] = useState(false);
 
   const actionHandlers: Record<HeaderAction, () => void> = {
-    eoc: onOpenEoc,
     sos: onOpenSos,
     models: onOpenModels,
     reports: onOpenReports,
@@ -114,7 +110,6 @@ export const Header: React.FC<HeaderProps> = ({
     { label: 'Weather & Radar', Icon: CloudRain, tab: 'weather' as const },
     { label: 'Crop Advisor', Icon: Sprout, tab: 'crop-water' as const },
     { label: 'Drainage Advisory', Icon: Shield, tab: 'drainage' as const },
-    { label: 'Emergency EOC', Icon: Siren, action: 'eoc' as const },
     { label: 'Citizen SOS', Icon: Users, action: 'sos' as const },
     { label: 'AI Models', Icon: BrainCircuit, action: 'models' as const },
     { label: 'Reports', Icon: FileText, action: 'reports' as const },

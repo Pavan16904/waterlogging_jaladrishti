@@ -398,7 +398,6 @@ export interface FloodMapPageProps {
   scoresKey?: number;
   selectedDate?: string;
   onDateChange?: (date: string) => void;
-  onOpenEoc?: () => void;
   onNavigateToDrainageActions?: (districtId?: string, actionId?: string, location?: string) => void;
   highlightDistrictId?: string | null;
   highlightLocation?: string | null;
@@ -645,7 +644,6 @@ export function FloodMapPage({
   scoresKey = 0,
   selectedDate,
   onDateChange,
-  onOpenEoc,
   onNavigateToDrainageActions,
   highlightDistrictId = null,
   highlightLocation = null,
