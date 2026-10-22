@@ -653,7 +653,8 @@ export function FloodMapPage({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const mapReadyRef = useRef<boolean>(false);
-  const markersRef = useRef<maplibregl.Marker[]>([]);
+  const [mapLoaded, setMapLoaded] = useState<boolean>(false);
+  const markersMapRef = useRef<Map<string, { marker: maplibregl.Marker; severity: SeverityLevel }>>(new Map());
 
   // Cross-district state
   const activeDistrict = useMemo(() => {
@@ -1297,19 +1298,19 @@ export function FloodMapPage({
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left');
     map.on('load', () => {
       mapReadyRef.current = true;
+      setMapLoaded(true);
       map.resize();
-      setTimeout(() => {
-        map.resize();
-      }, 200);
-
     });
 
     mapRef.current = map;
 
     return () => {
+      markersMapRef.current.forEach(({ marker }) => marker.remove());
+      markersMapRef.current.clear();
       map.remove();
       mapRef.current = null;
       mapReadyRef.current = false;
+      setMapLoaded(false);
     };
   }, []);
 
@@ -1358,87 +1359,57 @@ export function FloodMapPage({
     return () => { mounted = false; };
   }, []);
 
-  // Fit map viewport specifically to the selected district boundary geometry for all 31 districts
-  // Fit map viewport specifically to the selected district boundary or incident extent for optimal framing
+  // Zoom the map according to selected district boundaries for all 31 districts
   const fitToActiveDistrict = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Priority 1: Fit strictly to the verified district incidents extent (frames hotspots across viewport like Image 2)
-    const validCoords = mappedIncidents
-      .filter((inc) => inc.lat !== null && inc.lng !== null && !isNaN(inc.lat) && !isNaN(inc.lng))
-      .map((inc) => [inc.lng!, inc.lat!] as [number, number]);
-
-    if (validCoords.length > 0) {
-      const lats = validCoords.map((c) => c[1]);
-      const lngs = validCoords.map((c) => c[0]);
-      const minLat = Math.min(...lats);
-      const maxLat = Math.max(...lats);
-      const minLng = Math.min(...lngs);
-      const maxLng = Math.max(...lngs);
-
-      map.fitBounds(
-        [
-          [minLng, minLat],
-          [maxLng, maxLat],
-        ],
-        {
-          padding: { top: 55, bottom: 55, left: 55, right: 55 },
-          maxZoom: 11.5,
-          duration: 350,
-        }
-      );
-      return;
-    }
-
-    // Priority 2: Fit strictly to the verified district boundary polygon
-    const cleanId = activeDistrict.id.toLowerCase().replace(/[\s-]+/g, '_');
+    const cleanId = canonicalDistrictId(activeDistrict.id);
     const feat = districtGeoFeatures[cleanId] ||
                  districtGeoFeatures[activeDistrict.id] ||
-                 districtGeoFeatures[activeDistrict.name.toLowerCase().trim()] ||
-                 districtGeoFeatures[activeDistrict.displayName.toLowerCase().trim()];
+                 districtGeoFeatures[activeDistrict.name?.toLowerCase().trim()] ||
+                 districtGeoFeatures[activeDistrict.displayName?.toLowerCase().trim()];
 
     if (feat) {
       const bounds = getFeatureBounds(feat);
       if (bounds) {
         map.fitBounds(bounds, {
-          padding: { top: 45, bottom: 45, left: 45, right: 45 },
+          padding: { top: 50, bottom: 50, left: 50, right: 50 },
           maxZoom: 11.5,
-          duration: 350,
+          duration: 400,
         });
         return;
       }
     }
 
-    // Priority 3: Verified district-center fallback with optimal district overview zoom
+    // Fallback: Centered on district coordinates
     map.flyTo({
       center: [activeDistrict.lng, activeDistrict.lat],
-      zoom: 11.0,
-      duration: 350,
+      zoom: 10.5,
+      duration: 400,
     });
-  }, [activeDistrict, districtGeoFeatures, mappedIncidents]);
+  }, [activeDistrict, districtGeoFeatures]);
 
-  const prevDistrictIdRef = useRef<string | null>(null);
-  const initialZoomDoneRef = useRef<boolean>(false);
+  const prevDistrictIdRef = useRef<string>(activeDistrict.id);
 
+  // Zoom map when the selected district changes
   useEffect(() => {
-    // Zoom and reset state when the district changes, or on initial load as soon as incidents arrive
-    const districtChanged = prevDistrictIdRef.current !== activeDistrict.id;
-    const shouldInitialFit = !initialZoomDoneRef.current && mappedIncidents.length > 0;
-
-    if (!districtChanged && !shouldInitialFit) return;
-
-    if (districtChanged) {
+    if (!mapReadyRef.current) return;
+    if (prevDistrictIdRef.current !== activeDistrict.id) {
       prevDistrictIdRef.current = activeDistrict.id;
       setSelectedIncident(null);
+      fitToActiveDistrict();
     }
+  }, [activeDistrict.id, fitToActiveDistrict]);
 
-    if (mappedIncidents.length > 0) {
-      initialZoomDoneRef.current = true;
+  // Fit bounds when GeoJSON features first finish loading
+  const hasFittedGeojsonRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (mapReadyRef.current && Object.keys(districtGeoFeatures).length > 0 && !hasFittedGeojsonRef.current) {
+      hasFittedGeojsonRef.current = true;
+      fitToActiveDistrict();
     }
-
-    fitToActiveDistrict();
-  }, [activeDistrict.id, fitToActiveDistrict, mappedIncidents.length]);
+  }, [districtGeoFeatures, fitToActiveDistrict]);
 
   // Update district boundary layer on map
   useEffect(() => {
@@ -1567,125 +1538,132 @@ export function FloodMapPage({
     const roadVis = overlayFloodedRoads ? 'visible' : 'none';
     if (map.getLayer('flooded-roads-glow')) map.setLayoutProperty('flooded-roads-glow', 'visibility', roadVis);
     if (map.getLayer('flooded-roads-core')) map.setLayoutProperty('flooded-roads-core', 'visibility', roadVis);
-
   }, [overlayFloodedRoads]);
 
-  // Render Custom DOM Markers for Incidents and Water Gauges
+  // Render Custom DOM Markers for Incidents with fixed coordinates and incremental caching
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !mapReadyRef.current) return;
 
-    // Clear old markers
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
+    if (!overlayLiveIncidents) {
+      markersMapRef.current.forEach(({ marker }) => marker.remove());
+      markersMapRef.current.clear();
+      return;
+    }
 
-    // 1. Live Incidents (if overlay enabled)
-    if (overlayLiveIncidents) {
-      mappedIncidents.forEach((inc) => {
-        const normSev = normalizeSeverity(inc.severity);
-        const el = document.createElement('div');
-        el.className = 'group cursor-pointer select-none relative';
-        el.dataset.markerType = 'incident';
-        el.dataset.severity = normSev;
+    // Deduplicate mapped incidents by ID to eliminate duplicate markers
+    const currentIncidentsMap = new Map<string, FloodIncident>();
+    mappedIncidents.forEach((inc) => {
+      if (inc.lat !== null && inc.lng !== null && !isNaN(inc.lat) && !isNaN(inc.lng)) {
+        if (!currentIncidentsMap.has(inc.id)) {
+          currentIncidentsMap.set(inc.id, inc);
+        }
+      }
+    });
 
-        const fullLandmark = inc.landmark || inc.name;
-        el.innerHTML = `
-          <div style="display: flex; flex-direction: column; align-items: center; position: relative;">
-            <div style="
-              position: absolute;
-              bottom: 100%;
-              left: 50%;
-              transform: translateX(-50%);
-              margin-bottom: 6px;
-              background: rgba(15, 23, 42, 0.95);
-              color: #ffffff;
-              font-size: 11px;
-              font-weight: 700;
-              padding: 3px 8px;
-              border-radius: 6px;
-              box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-              white-space: nowrap;
-              pointer-events: none;
-              opacity: 0;
-              transition: opacity 120ms ease;
-              z-index: 50;
-            " class="marker-hover-label">${fullLandmark}</div>
-            <div style="transition: transform 120ms ease;" class="marker-icon-wrapper">
-              ${getSeverityMarkerSvg(normSev, 32)}
-            </div>
-          </div>
-        `;
+    // 1. Remove markers no longer in currentIncidentsMap
+    markersMapRef.current.forEach(({ marker }, id) => {
+      if (!currentIncidentsMap.has(id)) {
+        marker.remove();
+        markersMapRef.current.delete(id);
+      }
+    });
 
-        el.addEventListener('mouseenter', () => {
-          const lbl = el.querySelector('.marker-hover-label') as HTMLElement | null;
-          if (lbl) lbl.style.opacity = '1';
-          const icon = el.querySelector('.marker-icon-wrapper') as HTMLElement | null;
-          if (icon) icon.style.transform = 'scale(1.15)';
-        });
+    // 2. Add or update markers for currentIncidentsMap
+    currentIncidentsMap.forEach((inc, id) => {
+      const normSev = normalizeSeverity(inc.severity);
+      const isPin = normSev === 'Moderate';
+      const w = 34;
+      const h = isPin ? 38 : 34;
+      const anchor: 'center' | 'bottom' = isPin ? 'bottom' : 'center';
 
-        el.addEventListener('mouseleave', () => {
-          const lbl = el.querySelector('.marker-hover-label') as HTMLElement | null;
-          if (lbl) lbl.style.opacity = '0';
-          const icon = el.querySelector('.marker-icon-wrapper') as HTMLElement | null;
-          if (icon) icon.style.transform = 'scale(1)';
-        });
-
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          setSelectedIncident(inc);
-          if (inc.lng !== null && inc.lat !== null) {
-            map.flyTo({ center: [inc.lng, inc.lat], zoom: 12.5, duration: 350 });
+      const existing = markersMapRef.current.get(id);
+      if (existing) {
+        if (existing.severity !== normSev) {
+          existing.marker.remove();
+          markersMapRef.current.delete(id);
+        } else {
+          // Marker already exists and attached: update position only if changed
+          const currentLngLat = existing.marker.getLngLat();
+          if (Math.abs(currentLngLat.lng - inc.lng!) > 0.000001 || Math.abs(currentLngLat.lat - inc.lat!) > 0.000001) {
+            existing.marker.setLngLat([inc.lng!, inc.lat!]);
           }
-        });
+          return;
+        }
+      }
 
-        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-          .setLngLat([inc.lng!, inc.lat!])
-          .addTo(map);
+      // Root marker element: strict fixed dimensions, zero transition, absolute position
+      const el = document.createElement('div');
+      el.className = 'group';
+      el.dataset.markerType = 'incident';
+      el.dataset.severity = normSev;
+      el.dataset.incidentId = id;
+      el.style.width = `${w}px`;
+      el.style.height = `${h}px`;
+      el.style.position = 'absolute';
+      el.style.top = '0';
+      el.style.left = '0';
+      el.style.cursor = 'pointer';
+      el.style.userSelect = 'none';
+      el.style.pointerEvents = 'auto';
+      el.style.transition = 'none'; // Critical: prevent dancing/lagging during map zoom/pan
 
-        markersRef.current.push(marker);
-      });
-    }
-
-    // 2. Model Hex Markers disabled (showing real ground incidents only)
-
-    // 3. Water Level Gauges (if overlay is enabled)
-    if (overlayWaterLevels) {
-      districtWaterLevels.forEach((wl) => {
-        const el = document.createElement('div');
-        el.className = 'cursor-pointer select-none';
-        el.innerHTML = `
-          <div style="display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.3));">
-            <div style="
-              width: 28px;
-              height: 28px;
-              border-radius: 50%;
-              background: #2563eb;
-              border: 2px solid white;
-              box-shadow: 0 0 0 2px #1d4ed8;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-            ">
-              <svg style="width: 14px; height: 14px; color: white;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a8 8 0 0 1-8-8c0-3.5 4-8 8-12 4 4 8 8.5 8 12a8 8 0 0 1-8 8z" />
-              </svg>
-            </div>
+      const fullLandmark = inc.landmark || inc.name;
+      el.innerHTML = `
+        <div style="width: ${w}px; height: ${h}px; position: relative; display: flex; align-items: center; justify-content: center; pointer-events: auto;">
+          <div style="
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-bottom: 6px;
+            background: rgba(15, 23, 42, 0.95);
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 6px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 120ms ease;
+            z-index: 50;
+          " class="marker-hover-label">${fullLandmark}</div>
+          <div style="width: ${w}px; height: ${h}px; display: flex; align-items: center; justify-content: center;">
+            ${getSeverityMarkerSvg(normSev, 34)}
           </div>
-        `;
+        </div>
+      `;
 
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          map.flyTo({ center: [wl.lng, wl.lat], zoom: 12.5, duration: 350 });
-        });
-
-        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-          .setLngLat([wl.lng, wl.lat])
-          .addTo(map);
-
-        markersRef.current.push(marker);
+      el.addEventListener('mouseenter', () => {
+        const lbl = el.querySelector('.marker-hover-label') as HTMLElement | null;
+        if (lbl) lbl.style.opacity = '1';
       });
-    }
-  }, [mappedIncidents, districtWaterLevels, overlayLiveIncidents, overlayWaterLevels]);
+
+      el.addEventListener('mouseleave', () => {
+        const lbl = el.querySelector('.marker-hover-label') as HTMLElement | null;
+        if (lbl) lbl.style.opacity = '0';
+      });
+
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setSelectedIncident(inc);
+        if (inc.lng !== null && inc.lat !== null) {
+          map.flyTo({ center: [inc.lng, inc.lat], zoom: 12.5, duration: 350 });
+        }
+      });
+
+      const marker = new maplibregl.Marker({
+        element: el,
+        anchor,
+      })
+        .setLngLat([inc.lng!, inc.lat!])
+        .addTo(map);
+
+      markersMapRef.current.set(id, { marker, severity: normSev });
+    });
+  }, [mappedIncidents, overlayLiveIncidents, mapLoaded]);
 
   const activeBasemapConfig = useMemo(() => {
     return BASEMAP_OPTIONS.find((b) => b.id === basemapMode) || BASEMAP_OPTIONS[0];
