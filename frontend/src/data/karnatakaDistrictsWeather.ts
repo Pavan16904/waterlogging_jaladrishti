@@ -23,7 +23,7 @@ export const KARNATAKA_31_DISTRICTS_WEATHER: WeatherDistrict[] = [
   { id: 'chikkaballapura',  name: 'Chikkaballapura',              displayName: 'Chikkaballapura',  lat: 13.4325, lng: 77.7273, elevation: 915,  zone: 'Eastern Dry Zone (ACZ-5)',            river: 'Tungabhadra' },
   { id: 'tumakuru',         name: 'Tumakuru (Tumkur)',            displayName: 'Tumakuru',         lat: 13.3392, lng: 77.1166, elevation: 822,  zone: 'Central Dry Zone (ACZ-4)',            river: 'Pennar' },
   { id: 'chitradurga',      name: 'Chitradurga',                  displayName: 'Chitradurga',      lat: 14.2304, lng: 76.3980, elevation: 732,  zone: 'Central Dry Zone (ACZ-4)',            river: 'Vedavathi' },
-  { id: 'davanagere',       name: 'Davanagere',                   displayName: 'Davanagere',       lat: 14.4644, lng: 75.9218, elevation: 602,  zone: 'Central Dry Zone (ACZ-4)',            river: 'Heggarayi' },
+  { id: 'davangere',        name: 'Davanagere',                   displayName: 'Davanagere',       lat: 14.4644, lng: 75.9218, elevation: 602,  zone: 'Central Dry Zone (ACZ-4)',            river: 'Heggarayi' },
   { id: 'shivamogga',       name: 'Shivamogga (Shimoga)',         displayName: 'Shivamogga',       lat: 13.9299, lng: 75.5681, elevation: 584,  zone: 'Southern Transition Zone (ACZ-7)',    river: 'Heggarayi' },
   { id: 'chikkamagaluru',   name: 'Chikkamagaluru',               displayName: 'Chikkamagaluru',   lat: 13.3161, lng: 75.7720, elevation: 1090, zone: 'Hilly Zone (ACZ-9) / Western Ghats', river: 'Bhadra / Hemavathi' },
   { id: 'hassan',           name: 'Hassan',                       displayName: 'Hassan',           lat: 13.0072, lng: 76.0961, elevation: 957,  zone: 'Southern Transition Zone (ACZ-7)',    river: 'Hemavathi Reservoir' },

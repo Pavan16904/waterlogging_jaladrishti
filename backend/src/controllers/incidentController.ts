@@ -62,11 +62,19 @@ export async function getIncidents(req: Request, res: Response) {
       params.push(date_from.trim());
     }
     if (date_to && typeof date_to === 'string' && date_to.trim()) {
+      const dt = date_to.trim();
       sql += ' AND created_at <= ?';
-      params.push(date_to.trim());
+      params.push(dt.length === 10 ? `${dt}T23:59:59.999Z` : dt);
     }
 
     sql += ' ORDER BY created_at DESC';
+
+    const limitParam = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+    const offsetParam = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+    if (limitParam && !isNaN(limitParam) && limitParam > 0) {
+      sql += ' LIMIT ? OFFSET ?';
+      params.push(limitParam, isNaN(offsetParam) ? 0 : offsetParam);
+    }
 
     const result = await query(sql, params);
     const rows = result.rows || [];

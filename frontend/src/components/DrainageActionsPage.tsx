@@ -74,6 +74,8 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
   selectedDistrictId = 'bengaluru_urban',
   onSelectedDistrictIdChange,
   onNavigateToMap,
+  highlightActionId,
+  highlightLocation,
 }) => {
   // ── District State ──
   const [districtId, setDistrictId] = useState<string>(() => {
@@ -172,6 +174,22 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
 
   // Selected Asset for Detailed Popup / Modal
   const [selectedAsset, setSelectedAsset] = useState<DrainageAsset | null>(null);
+
+  // Auto-select asset when highlighted from Flood Map navigation
+  useEffect(() => {
+    if (!highlightActionId && !highlightLocation) return;
+    const target = assets.find((a) =>
+      (highlightActionId && (a.id === highlightActionId || a.id.toLowerCase().includes(highlightActionId.toLowerCase()))) ||
+      (highlightLocation && a.name.toLowerCase().includes(highlightLocation.toLowerCase())) ||
+      (highlightLocation && a.locality?.toLowerCase().includes(highlightLocation.toLowerCase()))
+    );
+    if (target) {
+      setSelectedAsset(target);
+      if (mapRef.current && target.lat && target.lng) {
+        mapRef.current.flyTo({ center: [target.lng, target.lat], zoom: 13.5, duration: 800 });
+      }
+    }
+  }, [highlightActionId, highlightLocation, assets]);
 
   // Modals for "View All"
   const [activeModal, setActiveModal] = useState<
@@ -561,6 +579,19 @@ export const DrainageActionsPage: React.FC<DrainageActionsPageProps> = ({
             <span>{todayFormatted}</span>
             <ChevronDown size={12} className="text-slate-400" />
           </div>
+
+          {/* Return to Flood Map Link */}
+          {onNavigateToMap && (
+            <button
+              type="button"
+              onClick={onNavigateToMap}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-[#1d6fd8] shadow-xs hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/70 dark:text-blue-300"
+              title="Return to Flood Map"
+            >
+              <ExternalLink size={13} />
+              <span>Flood Map</span>
+            </button>
+          )}
 
           {/* Refresh Button */}
           <button

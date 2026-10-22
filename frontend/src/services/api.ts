@@ -203,14 +203,32 @@ export const api = {
   },
 
   // Modelled Waterlogging Risk Hex Map
-  getWaterlogHexes: async (params: { valid_time?: string; res?: number; bbox?: string; district_id?: string; district?: string }): Promise<{ success: boolean; hexes: any[]; count: number; valid_time?: string; reason?: string }> => {
+  getWaterlogHexes: async (params: { valid_time?: string; res?: number; bbox?: string; district_id?: string; district?: string; limit?: number }): Promise<{ success: boolean; hexes: any[]; count: number; valid_time?: string; reason?: string }> => {
     const queryParams = new URLSearchParams();
     if (params.valid_time) queryParams.set('valid_time', params.valid_time);
     if (params.res) queryParams.set('res', String(params.res));
     if (params.bbox) queryParams.set('bbox', params.bbox);
     const dId = params.district_id || params.district;
     if (dId) queryParams.set('district_id', dId);
+    if (params.limit) queryParams.set('limit', String(params.limit));
     const res = await axios.get(`${API_BASE}/waterlog/hexes?${queryParams.toString()}`);
+    return res.data;
+  },
+
+  // Modelled Waterlogging Risk Areas (15-25 top catchment risk areas grounded in empirical data)
+  getEstimatedRiskAreas: async (districtId: string, limit = 20): Promise<{
+    success: boolean;
+    district_id: string;
+    count: number;
+    by_severity: { severe: number; high: number; moderate: number; minor: number };
+    rainfall_context: any;
+    drainage_context: any;
+    history_context: any;
+    risk_areas: any[];
+    source: string;
+    freshness: string;
+  }> => {
+    const res = await axios.get(`${API_BASE}/waterlog/risk-areas?district_id=${encodeURIComponent(districtId)}&limit=${limit}`);
     return res.data;
   },
 

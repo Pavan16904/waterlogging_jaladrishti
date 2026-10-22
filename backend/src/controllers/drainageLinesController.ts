@@ -646,11 +646,17 @@ export async function getDrainageAssets(req: Request, res: Response): Promise<vo
       let lng = 0;
       try {
         const geom = typeof row.geometry_geojson === 'string' ? JSON.parse(row.geometry_geojson) : row.geometry_geojson;
-        const coords = geom?.type === 'LineString' ? geom.coordinates : geom?.coordinates?.[0];
+        const actualGeom = geom?.geometry || geom;
+        const rawCoords = actualGeom?.coordinates;
+        const coords = (actualGeom?.type === 'LineString' && Array.isArray(rawCoords))
+          ? rawCoords
+          : (Array.isArray(rawCoords) && Array.isArray(rawCoords[0]) && typeof rawCoords[0][0] === 'number')
+            ? rawCoords
+            : rawCoords?.[0];
         if (coords && coords.length > 0) {
           const mid = coords[Math.floor(coords.length / 2)] || coords[0];
-          lng = mid[0];
-          lat = mid[1];
+          lng = mid[0] || 0;
+          lat = mid[1] || 0;
         }
       } catch { /* skip */ }
 

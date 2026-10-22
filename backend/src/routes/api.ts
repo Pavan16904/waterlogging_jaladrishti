@@ -17,7 +17,7 @@ import {
   getSatelliteMeta,
   getLiveDrainageAdvisory
 } from '../controllers/realtimeController.js';
-import { getWaterlogHexes, getWaterlogStatus, getWaterlogSummary } from '../controllers/waterlogController.js';
+import { getWaterlogHexes, getWaterlogStatus, getWaterlogSummary, getEstimatedRiskAreas } from '../controllers/waterlogController.js';
 import { getDataPipelineStatus, triggerSatelliteFloodCheck, triggerForecastIngestion, getOperaFloodObservations } from '../controllers/statusController.js';
 import { getWeatherByDistrictId } from '../controllers/weatherController.js';
 import { getCropWaterAdvice } from '../controllers/cropAdviceController.js';
@@ -105,6 +105,7 @@ router.get('/realtime/drainage-advisory/:districtId', getLiveDrainageAdvisory);
 
 // Modelled Waterlogging Risk Hex Map Endpoints (All 31 Districts)
 router.get('/waterlog/hexes', getWaterlogHexes);
+router.get('/waterlog/risk-areas', getEstimatedRiskAreas);
 router.get('/waterlog/status', getWaterlogStatus);
 router.get('/waterlog/summary', getWaterlogSummary);
 
