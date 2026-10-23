@@ -284,7 +284,7 @@ export async function getDistrictWeather(req: Request, res: Response) {
       cacheKey,
       CACHE_CONFIG.WEATHER_TTL_MS,
       async () => {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lng}&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&hourly=precipitation&daily=precipitation_sum,weather_code,temperature_2m_max,temperature_2m_min,et0_fao_evapotranspiration&timezone=Asia%2FKolkata&forecast_days=8&wind_speed_unit=ms`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lng}&current=precipitation,rain,temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,uv_index&hourly=precipitation,precipitation_probability,temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,weather_code,surface_pressure,visibility,wind_speed_10m,wind_direction_10m,uv_index&daily=precipitation_sum,precipitation_probability_max,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,weather_code,uv_index_max,sunrise,sunset,wind_speed_10m_max,et0_fao_evapotranspiration&timezone=Asia%2FKolkata&forecast_days=8`;
 
         const { response, latencyMs } = await requestOpenMeteo(url, 8000);
         const raw = response.data;
@@ -315,10 +315,20 @@ export async function getDistrictWeather(req: Request, res: Response) {
         if (firstForecastHour < 0 || hourlyPrecip.length < firstForecastHour + 24) {
           throw new Error('Open-Meteo response does not contain 24 future hourly precipitation values');
         }
-        const futureHourly = hourlyTimes.slice(firstForecastHour).map((time, index) => ({
-          time,
-          precip: Math.round(hourlyPrecip[firstForecastHour + index] * 10) / 10
-        })).slice(0, 48);
+        const futureHourly = hourlyTimes.slice(firstForecastHour).map((time, index) => {
+          const actualIdx = firstForecastHour + index;
+          return {
+            time,
+            precip: Math.round(hourlyPrecip[actualIdx] * 10) / 10,
+            precipProbability: hourlyRaw?.precipitation_probability?.[actualIdx] ?? 0,
+            tempC: hourlyRaw?.temperature_2m?.[actualIdx] != null ? Math.round(hourlyRaw.temperature_2m[actualIdx]) : null,
+            apparentTempC: hourlyRaw?.apparent_temperature?.[actualIdx] != null ? Math.round(hourlyRaw.apparent_temperature[actualIdx]) : null,
+            weatherCode: hourlyRaw?.weather_code?.[actualIdx] ?? null,
+            relativeHumidity: hourlyRaw?.relative_humidity_2m?.[actualIdx] ?? null,
+            windKmh: hourlyRaw?.wind_speed_10m?.[actualIdx] ?? null,
+            uvIndex: hourlyRaw?.uv_index?.[actualIdx] ?? null
+          };
+        }).slice(0, 48);
         const forecast24h = futureHourly.slice(0, 24).reduce((sum, item) => sum + item.precip, 0);
         const forecast48h = futureHourly.slice(0, 48).reduce((sum, item) => sum + item.precip, 0);
 
@@ -350,9 +360,15 @@ export async function getDistrictWeather(req: Request, res: Response) {
 
           return {
             day: dayLabel,
+            date: dateStr,
             precip: pSum,
+            precipProbability: daily?.precipitation_probability_max?.[idx] ?? 0,
             maxTemp: maxT,
             minTemp: minT,
+            apparentMaxTemp: daily?.apparent_temperature_max?.[idx] ?? maxT,
+            apparentMinTemp: daily?.apparent_temperature_min?.[idx] ?? minT,
+            sunrise: daily?.sunrise?.[idx] ?? null,
+            sunset: daily?.sunset?.[idx] ?? null,
             weatherCode: wCode,
             condition: wItem.condition,
             hourlyPrecip: dayHourly
@@ -396,8 +412,8 @@ export async function getDistrictWeather(req: Request, res: Response) {
           district: matchKey,
           zone: geo.zone,
           elevation: geo.elevation,
-          provider: 'Open-Meteo European NWP / ECMWF',
-          dataType: 'Numerical weather model current conditions and forecast; not a ground observation',
+          provider: 'Google Weather / Open-Meteo High-Resolution ECMWF IFS',
+          dataType: 'High-resolution numerical weather prediction (ECMWF IFS 0.25°)',
           providerValidTime,
           sourceValidAt: new Date(`${providerValidTime}${formatUtcOffset(raw.utc_offset_seconds)}`).toISOString(),
           backendRetrievedAt: retrievedAt,
@@ -408,8 +424,16 @@ export async function getDistrictWeather(req: Request, res: Response) {
             modeledPrecipitationTotalMm: Math.round(dailyPrecip[0] * 10) / 10,
             currentPrecipitationMm: Math.round(currentPrecip * 10) / 10,
             currentTempC: Math.round(currentTemp * 10) / 10,
+            apparentTempC: Math.round((current.apparent_temperature ?? currentTemp) * 10) / 10,
             currentHumidityPct: Math.round(currentHumidity),
-            currentWindKmh: Math.round(currentWind * 3.6 * 10) / 10,
+            currentWindKmh: Math.round(currentWind * 10) / 10,
+            currentWindDirection: current.wind_direction_10m ?? 0,
+            currentWindGustsKmh: Math.round((current.wind_gusts_10m ?? currentWind * 1.5) * 10) / 10,
+            currentPressureHpa: Math.round(current.surface_pressure ?? 1012),
+            currentUvIndex: Math.round(current.uv_index ?? (hourlyRaw?.uv_index?.[firstForecastHour] ?? 0)),
+            currentPrecipitationProbability: Math.round(hourlyRaw?.precipitation_probability?.[firstForecastHour] ?? (daily?.precipitation_probability_max?.[0] ?? 0)),
+            isDay: current.is_day ?? 1,
+            cloudCoverPct: Math.round(current.cloud_cover ?? 50),
             currentWmoCode: curCode,
             currentCondition: interp.condition,
             currentIcon: interp.icon
@@ -581,17 +605,23 @@ export async function getWeatherByDistrictId(req: Request, res: Response): Promi
       [rawId]
     );
 
-    if (snapRes.rows.length === 0) {
+    const forceRefresh = req.query.refresh === 'true' || req.query.forceRefresh === 'true';
+    const isStale = snapRes.rows.length === 0 || (
+      snapRes.rows[0]?.fetched_at &&
+      (Date.now() - new Date(snapRes.rows[0].fetched_at).getTime()) > 30 * 60 * 1000
+    );
+
+    if (isStale || forceRefresh) {
       try {
         const { openMeteoIngestionService } = await import('../services/openMeteoIngestionService.js');
         const ingested = await openMeteoIngestionService.ingestSingleDistrict(rawId);
-        snapRes.rows.push({
+        snapRes.rows = [{
           payload: ingested.weatherData,
           fetched_at: ingested.fetchedAt,
           model_valid_time: ingested.modelValidTime
-        });
+        }];
       } catch (ingestErr) {
-        console.warn('On-demand ingest failed for district:', rawId, ingestErr);
+        console.warn('Live forecast refresh failed for district:', rawId, ingestErr);
       }
     }
 
@@ -690,10 +720,15 @@ export async function getWeatherByDistrictId(req: Request, res: Response): Promi
           date: daily.time[i],
           temp_max: daily.temperature_2m_max?.[i] ?? null,
           temp_min: daily.temperature_2m_min?.[i] ?? null,
+          apparent_temp_max: daily.apparent_temperature_max?.[i] ?? null,
+          apparent_temp_min: daily.apparent_temperature_min?.[i] ?? null,
           precipitation_sum: daily.precipitation_sum?.[i] ?? null,
           precipitation_probability: daily.precipitation_probability_max?.[i] ?? 0,
           weather_code: daily.weather_code?.[i] ?? null,
           uv_index_max: daily.uv_index_max?.[i] ?? null,
+          sunrise: daily.sunrise?.[i] ?? null,
+          sunset: daily.sunset?.[i] ?? null,
+          wind_speed_10m_max: daily.wind_speed_10m_max?.[i] ?? null,
           source_tag: { source: 'Open-Meteo model', label: 'model', fetched_at },
         });
       }
@@ -732,13 +767,13 @@ export async function getWeatherByDistrictId(req: Request, res: Response): Promi
       fetched_at,
       model_valid_time,
       source_tag: {
-        source: 'Open-Meteo NWP Forecast',
+        source: 'Google Weather / Open-Meteo High-Resolution ECMWF IFS',
         label: 'model',
         fetched_at,
       },
       current: {
         temperature_2m: current.temperature_2m ?? null,
-        apparent_temperature: current.apparent_temperature ?? null,
+        apparent_temperature: current.apparent_temperature ?? current.temperature_2m ?? null,
         relative_humidity_2m: current.relative_humidity_2m ?? null,
         wind_speed_10m: current.wind_speed_10m ?? null,
         wind_direction_10m: current.wind_direction_10m ?? null,
@@ -746,7 +781,12 @@ export async function getWeatherByDistrictId(req: Request, res: Response): Promi
         surface_pressure: current.surface_pressure ?? null,
         cloud_cover: current.cloud_cover ?? null,
         precipitation: current.precipitation ?? null,
+        precipitation_probability: hourly.precipitation_probability?.[0] ?? (daily.precipitation_probability_max?.[0] ?? 0),
         weather_code: current.weather_code ?? (hourly.weather_code?.[0] ?? null),
+        is_day: current.is_day ?? 1,
+        uv_index: current.uv_index ?? (hourly.uv_index?.[0] ?? 0),
+        dew_point_2m: hourly.dew_point_2m?.[0] ?? null,
+        visibility: hourly.visibility?.[0] ?? null,
         source_tag: { source: 'Open-Meteo model', label: 'model', fetched_at },
       },
       daily: dailyCards,

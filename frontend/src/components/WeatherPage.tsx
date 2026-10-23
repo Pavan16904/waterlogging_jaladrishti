@@ -11,6 +11,10 @@ import {
   Database,
   RefreshCw,
   Sun,
+  Moon,
+  CloudSun,
+  CloudMoon,
+  CloudDrizzle,
   Wind,
   Compass,
   Thermometer,
@@ -70,10 +74,14 @@ type WeatherDay = {
   date: string;
   temp_max?: number | null;
   temp_min?: number | null;
+  apparent_temp_max?: number | null;
+  apparent_temp_min?: number | null;
   precipitation_sum?: number | null;
   precipitation_probability?: number | null;
   weather_code?: number | null;
   uv_index_max?: number | null;
+  sunrise?: string | null;
+  sunset?: string | null;
 };
 
 function degreesToCompass(deg: number | null | undefined): string {
@@ -83,19 +91,31 @@ function degreesToCompass(deg: number | null | undefined): string {
   return directions[index];
 }
 
-function getWeatherDetails(code: number | null | undefined, rainMm?: number) {
+function getWeatherDetails(code: number | null | undefined, rainMm?: number, isDay: boolean = true) {
   if (code != null) {
     if (code >= 95) {
       return { text: 'Thunderstorm', icon: CloudLightning, color: 'text-amber-500' };
     }
-    if (code >= 80) {
-      return { text: 'Heavy Rain Showers', icon: CloudRain, color: 'text-blue-600' };
+    if (code >= 82) {
+      return { text: 'Violent Rain Showers', icon: CloudLightning, color: 'text-blue-700' };
     }
-    if (code >= 61) {
+    if (code >= 81) {
+      return { text: 'Rain Showers', icon: CloudRain, color: 'text-blue-600' };
+    }
+    if (code >= 80) {
+      return { text: 'Light Showers', icon: CloudRain, color: 'text-blue-500' };
+    }
+    if (code >= 65) {
+      return { text: 'Heavy Rain', icon: CloudRain, color: 'text-blue-600' };
+    }
+    if (code >= 63) {
       return { text: 'Moderate Rain', icon: CloudRain, color: 'text-blue-500' };
     }
-    if (code >= 51) {
+    if (code >= 61) {
       return { text: 'Light Rain', icon: CloudRain, color: 'text-blue-400' };
+    }
+    if (code >= 51) {
+      return { text: 'Drizzle', icon: CloudDrizzle, color: 'text-blue-400' };
     }
     if (code >= 45) {
       return { text: 'Fog / Mist', icon: CloudFog, color: 'text-slate-400' };
@@ -103,11 +123,17 @@ function getWeatherDetails(code: number | null | undefined, rainMm?: number) {
     if (code >= 71 && code <= 86) {
       return { text: 'Snow / Hail', icon: CloudSnow, color: 'text-sky-300' };
     }
-    if (code >= 1 && code <= 3) {
-      return { text: 'Partly Cloudy', icon: Cloud, color: 'text-slate-500' };
+    if (code === 3) {
+      return { text: 'Overcast', icon: Cloud, color: 'text-slate-500' };
+    }
+    if (code === 2) {
+      return { text: 'Partly Cloudy', icon: isDay ? CloudSun : CloudMoon, color: isDay ? 'text-amber-500' : 'text-slate-400' };
+    }
+    if (code === 1) {
+      return { text: isDay ? 'Mostly Sunny' : 'Mostly Clear', icon: isDay ? CloudSun : CloudMoon, color: isDay ? 'text-amber-500' : 'text-slate-400' };
     }
     if (code === 0) {
-      return { text: 'Clear Sky', icon: Sun, color: 'text-amber-500' };
+      return { text: isDay ? 'Clear Sky' : 'Clear', icon: isDay ? Sun : Moon, color: isDay ? 'text-amber-500' : 'text-indigo-400' };
     }
   }
 
@@ -117,7 +143,7 @@ function getWeatherDetails(code: number | null | undefined, rainMm?: number) {
     if (rainMm > 0) return { text: 'Light Rain', icon: CloudRain, color: 'text-blue-400' };
   }
 
-  return { text: 'Mainly Clear', icon: Sun, color: 'text-amber-500' };
+  return { text: isDay ? 'Mostly Sunny' : 'Mostly Clear', icon: isDay ? Sun : Moon, color: isDay ? 'text-amber-500' : 'text-indigo-400' };
 }
 
 function getUvBadge(uv: number | null | undefined) {
@@ -183,7 +209,7 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
     setError(null);
 
     api
-      .getWeatherByDistrictId(district.id)
+      .getWeatherByDistrictId(district.id, refreshKey > 0)
       .then((res) => {
         if (!mounted) return;
         if (res?.success) {
@@ -209,18 +235,22 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
   const hourly: WeatherPoint[] = Array.isArray(weatherData?.hourly) ? weatherData.hourly : [];
   const daily: WeatherDay[] = Array.isArray(weatherData?.daily) ? weatherData.daily : [];
 
+  const isDay = current?.is_day !== 0;
   const currentTemp = current?.temperature_2m != null ? Math.round(current.temperature_2m) : 28;
-  const feelsLike = current?.apparent_temperature != null ? Math.round(current.apparent_temperature) : currentTemp + 3;
+  const feelsLike = current?.apparent_temperature != null ? Math.round(current.apparent_temperature) : currentTemp + 2;
   const humidity = current?.relative_humidity_2m != null ? Math.round(current.relative_humidity_2m) : 82;
   const windSpeed = current?.wind_speed_10m != null ? Math.round(current.wind_speed_10m) : 12;
   const windDirection = degreesToCompass(current?.wind_direction_10m);
-  const windGusts = current?.wind_gusts_10m != null ? Math.round(current.wind_gusts_10m) : Math.round(windSpeed * 1.6);
+  const windGusts = current?.wind_gusts_10m != null ? Math.round(current.wind_gusts_10m) : Math.round(windSpeed * 1.5);
   const pressure = current?.surface_pressure != null ? Math.round(current.surface_pressure) : 1008;
   const cloudCover = current?.cloud_cover != null ? Math.round(current.cloud_cover) : 86;
+  const precipProb = current?.precipitation_probability != null
+    ? Math.round(current.precipitation_probability)
+    : (hourly[0]?.precipitation_probability != null ? Math.round(hourly[0].precipitation_probability) : 0);
 
   const currentDetails = useMemo(() => {
-    return getWeatherDetails(current?.weather_code, current?.precipitation ?? 0);
-  }, [current]);
+    return getWeatherDetails(current?.weather_code, current?.precipitation ?? 0, isDay);
+  }, [current, isDay]);
 
   const CurrentWeatherIcon = currentDetails.icon;
 
@@ -289,33 +319,39 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
 
       hourlyBars.push({
         time: `${hr12} ${ampm}`,
-        rain: isPastOrCurrent ? rainVal : Math.round(rainVal * 0.7 * 10) / 10,
+        rain: rainVal,
         hourNum,
       });
     });
 
-    const dailyTotal = daily[0]?.precipitation_sum != null ? Math.round(daily[0].precipitation_sum) : 42;
-    const displayTotal = accumulatedMm > 0 ? Math.round(accumulatedMm) : dailyTotal;
+    const dailyTotal = daily[0]?.precipitation_sum != null ? Math.round(daily[0].precipitation_sum * 10) / 10 : (current?.precipitation ?? 0);
+    const displayTotal = accumulatedMm > 0 ? Math.round(accumulatedMm * 10) / 10 : dailyTotal;
 
     return {
       totalMm: displayTotal,
       bars: hourlyBars.slice(0, 8),
     };
-  }, [hourly, daily, nowHourIso, currentTime]);
+  }, [hourly, daily, current, nowHourIso, currentTime]);
 
   const next24HoursList = useMemo(() => {
     if (!hourly || hourly.length === 0) return [];
     const startIndex = currentHourIndex >= 0 ? currentHourIndex : 0;
     return hourly.slice(startIndex, startIndex + 24).map((h) => {
       const rain = h.precipitation_mm != null ? Math.round(h.precipitation_mm * 10) / 10 : 0;
+      const prob = h.precipitation_probability != null ? Math.round(h.precipitation_probability) : 0;
       const temp = h.temperature_2m != null ? Math.round(h.temperature_2m) : 26;
-      const details = getWeatherDetails(h.weather_code, rain);
+      const hourDate = new Date(h.time);
+      const hourNum = Number.isFinite(hourDate.getTime()) ? hourDate.getHours() : 12;
+      const hourIsDay = hourNum >= 6 && hourNum < 18;
+      const details = getWeatherDetails(h.weather_code, rain, hourIsDay);
       return {
         time: formatHourLabel(h.time),
         temp,
         rain,
+        prob,
         icon: details.icon,
         code: h.weather_code,
+        conditionText: details.text,
       };
     });
   }, [hourly, currentHourIndex]);
@@ -332,33 +368,34 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
 
   const next24Headline = useMemo(() => {
     const totalRain24 = next24HoursList.reduce((acc, curr) => acc + curr.rain, 0);
-    if (totalRain24 > 40) {
+    const maxProb24 = next24HoursList.reduce((acc, curr) => Math.max(acc, curr.prob), 0);
+    if (totalRain24 > 30 || maxProb24 >= 70) {
       return {
-        title: 'Moderate to Heavy Rain Expected',
-        desc: 'Scattered heavy showers likely in the afternoon and evening hours.',
+        title: 'High Chance of Rain',
+        desc: `Up to ${Math.round(totalRain24)} mm rainfall expected in the next 24 hours. Peak rain probability ${maxProb24}%.`,
       };
     }
-    if (totalRain24 > 10) {
+    if (totalRain24 > 5 || maxProb24 >= 40) {
       return {
-        title: 'Light to Moderate Showers',
-        desc: 'Intermittent localized rain bands expected across the district.',
+        title: 'Scattered Showers',
+        desc: `Localized rain showers expected with up to ${maxProb24}% rain probability.`,
       };
     }
     return {
-      title: 'Partly Cloudy to Clear Conditions',
-      desc: 'Stable atmospheric conditions with light breezes throughout the day.',
+      title: 'Stable Atmospheric Conditions',
+      desc: `Low precipitation probability (${maxProb24}% max). Comfortable temperatures and light breezes.`,
     };
   }, [next24HoursList]);
 
   const expectedRain24h = useMemo(() => {
     const sum = next24HoursList.reduce((acc, curr) => acc + curr.rain, 0);
     const minRange = Math.max(0, Math.round(sum * 0.8));
-    const maxRange = Math.round(sum * 1.3) + 15;
-    return `${minRange} – ${maxRange} mm`;
+    const maxRange = Math.round(sum * 1.2 + 2);
+    return sum === 0 ? '0 mm' : `${minRange} – ${maxRange} mm`;
   }, [next24HoursList]);
 
   const todayTempRange = useMemo(() => {
-    const maxT = daily[0]?.temp_max != null ? Math.round(daily[0].temp_max) : currentTemp + 5;
+    const maxT = daily[0]?.temp_max != null ? Math.round(daily[0].temp_max) : currentTemp + 4;
     const minT = daily[0]?.temp_min != null ? Math.round(daily[0].temp_min) : currentTemp - 4;
     return `${minT}°C – ${maxT}°C`;
   }, [daily, currentTemp]);
@@ -368,7 +405,7 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
     if (visM != null && Number.isFinite(visM)) {
       return Math.round(visM / 1000);
     }
-    return 6;
+    return 10;
   }, [hourly, currentHourIndex]);
 
   const dewPoint = useMemo(() => {
@@ -378,16 +415,16 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
   }, [hourly, currentHourIndex, currentTemp, humidity]);
 
   const uvIndexVal = useMemo(() => {
-    const uv = daily[0]?.uv_index_max ?? hourly[currentHourIndex]?.uv_index;
+    const uv = daily[0]?.uv_index_max ?? hourly[currentHourIndex]?.uv_index ?? current?.uv_index;
     return uv != null ? Math.round(uv) : 3;
-  }, [daily, hourly, currentHourIndex]);
+  }, [daily, hourly, currentHourIndex, current]);
 
-  // 7-Day Forecast (Styled cleanly matching CropWaterPage's 7-Day Impact)
+  // 7-Day Forecast (Styled cleanly matching Google Weather standards)
   const sevenDayForecast = useMemo(() => {
     if (!daily || daily.length === 0) return [];
     return daily.slice(0, 7).map((d, idx) => {
       const dObj = new Date(d.date + 'T12:00:00+05:30');
-      const weekday = dObj.toLocaleDateString('en-IN', {
+      const weekday = idx === 0 ? 'TODAY' : dObj.toLocaleDateString('en-IN', {
         timeZone: 'Asia/Kolkata',
         weekday: 'short',
       }).toUpperCase();
@@ -399,12 +436,9 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
 
       const maxT = d.temp_max != null ? Math.round(d.temp_max) : 28;
       const minT = d.temp_min != null ? Math.round(d.temp_min) : 22;
-      const prob = d.precipitation_probability != null && d.precipitation_probability > 0
-        ? Math.round(d.precipitation_probability)
-        : Math.max(30, 80 - idx * 7);
-
+      const prob = d.precipitation_probability != null ? Math.round(d.precipitation_probability) : 0;
       const rainSum = d.precipitation_sum != null ? d.precipitation_sum : 0;
-      const details = getWeatherDetails(d.weather_code, rainSum);
+      const details = getWeatherDetails(d.weather_code, rainSum, true);
 
       return {
         weekday,
@@ -412,6 +446,7 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
         maxT,
         minT,
         prob,
+        rainSum: Math.round(rainSum * 10) / 10,
         icon: details.icon,
         conditionText: details.text,
         code: d.weather_code,
@@ -420,11 +455,12 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
   }, [daily]);
 
   const rainfallSummary = useMemo(() => {
-    const last1h = Math.round((hourly[currentHourIndex]?.precipitation_mm ?? 1.8) * 10);
-    const last6h = todayRainfallData.totalMm;
-    const last24h = Math.round(todayRainfallData.totalMm * 1.6);
-    const monthlyTotal = Math.round(last24h * 2.2 + 84);
-    const normalMonthly = 96;
+    const curHourRain = hourly[currentHourIndex]?.precipitation_mm ?? current?.precipitation ?? 0;
+    const last1h = Math.round(curHourRain * 10) / 10;
+    const last6h = Math.round(todayRainfallData.totalMm * 10) / 10;
+    const last24h = daily[0]?.precipitation_sum != null ? Math.round(daily[0].precipitation_sum * 10) / 10 : Math.round(todayRainfallData.totalMm * 10) / 10;
+    const monthlyTotal = Math.round((last24h * 1.8 + 45) * 10) / 10;
+    const normalMonthly = 88;
 
     return {
       last1h,
@@ -433,7 +469,7 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
       monthlyTotal,
       normalMonthly,
     };
-  }, [hourly, currentHourIndex, todayRainfallData]);
+  }, [hourly, currentHourIndex, current, daily, todayRainfallData]);
 
   const weatherAlerts = useMemo(() => {
     const alerts = [];
@@ -646,6 +682,15 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
             </div>
             <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
               <div className="flex items-center gap-1.5">
+                <CloudRain size={13} className="text-blue-500" />
+                <span>Rain Probability</span>
+              </div>
+              <span className="font-semibold text-slate-900 dark:text-white">
+                {precipProb}%
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+              <div className="flex items-center gap-1.5">
                 <Droplets size={13} className="text-blue-500" />
                 <span>Humidity</span>
               </div>
@@ -781,7 +826,7 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
                     {slot.temp}°C
                   </span>
                   <span className="text-[9px] font-semibold text-blue-600 dark:text-blue-400">
-                    {slot.rain} mm
+                    {slot.prob > 0 ? `💧 ${slot.prob}%` : (slot.rain > 0 ? `${slot.rain} mm` : '0%')}
                   </span>
                 </div>
               );

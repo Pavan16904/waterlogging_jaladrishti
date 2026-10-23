@@ -212,7 +212,7 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
       const td = liveWeather.today;
       return {
         tempC: Math.round(td.currentTempC ?? 28),
-        apparentTempC: Math.round(td.currentTempC ?? 28),
+        apparentTempC: Math.round(td.apparentTempC ?? td.currentTempC ?? 28),
         humidity: Math.round(td.currentHumidityPct ?? 82),
         rainToday: Math.round((td.currentPrecipitationMm ?? td.modeledPrecipitationTotalMm ?? 0) * 10) / 10,
         forecastRain: Math.round((liveWeather.forecast?.forecast24hPrecipMm ?? 0) * 10) / 10,

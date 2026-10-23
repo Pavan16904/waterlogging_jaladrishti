@@ -76,10 +76,10 @@ export class OpenMeteoIngestionService {
   public async fetchOpenMeteoWithBackoff(lat: number, lng: number, maxRetries: number = 3): Promise<any> {
     const baseUrl = process.env.OPEN_METEO_BASE_URL || 'https://api.open-meteo.com/v1';
     let url = `${baseUrl}/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}` +
-      `&current=precipitation,temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover` +
+      `&current=precipitation,rain,temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,uv_index` +
       `&minutely_15=precipitation` +
       `&hourly=precipitation,precipitation_probability,temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,weather_code,surface_pressure,visibility,wind_speed_10m,wind_direction_10m,uv_index,et0_fao_evapotranspiration` +
-      `&daily=precipitation_sum,precipitation_probability_max,temperature_2m_max,temperature_2m_min,weather_code,uv_index_max,et0_fao_evapotranspiration` +
+      `&daily=precipitation_sum,precipitation_probability_max,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,weather_code,uv_index_max,sunrise,sunset,wind_speed_10m_max,et0_fao_evapotranspiration` +
       `&past_days=2&forecast_days=8&timezone=Asia%2FKolkata`;
 
     if (process.env.OPEN_METEO_API_KEY) {

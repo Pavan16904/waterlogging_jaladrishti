@@ -245,8 +245,9 @@ export const api = {
   },
 
   // Phase 3 Endpoints
-  getWeatherByDistrictId: async (districtId: string): Promise<any> => {
-    const res = await axios.get(`${API_BASE}/weather/district/${encodeURIComponent(districtId)}`);
+  getWeatherByDistrictId: async (districtId: string, refresh = false): Promise<any> => {
+    const q = refresh ? '?refresh=true' : '';
+    const res = await axios.get(`${API_BASE}/weather/district/${encodeURIComponent(districtId)}${q}`);
     return res.data;
   },
 
