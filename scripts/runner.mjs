@@ -1,4 +1,5 @@
 import { spawn, execSync } from 'child_process';
+import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -8,6 +9,17 @@ const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const LOGS_DIR = path.join(ROOT_DIR, 'logs');
 const PID_FILE = path.join(LOGS_DIR, 'pids.json');
+
+function isPortHealthy(port) {
+  return new Promise((resolve) => {
+    const testPath = port === 8000 ? '/docs' : port === 5000 ? '/health' : '/';
+    const req = http.get(`http://127.0.0.1:${port}${testPath}`, { timeout: 1500 }, (res) => {
+      resolve(res.statusCode < 500);
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
+}
 
 if (!fs.existsSync(LOGS_DIR)) {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
@@ -55,6 +67,7 @@ const SERVICES = [
     cwd: ROOT_DIR,
     port: 5000,
     logFile: path.join(LOGS_DIR, 'backend.log'),
+    shell: isWin,
   },
   {
     name: 'frontend',
@@ -63,6 +76,7 @@ const SERVICES = [
     cwd: ROOT_DIR,
     port: 3001,
     logFile: path.join(LOGS_DIR, 'frontend.log'),
+    shell: isWin,
   },
   {
     name: 'ml-service',
@@ -71,6 +85,7 @@ const SERVICES = [
     cwd: ROOT_DIR,
     port: 8000,
     logFile: path.join(LOGS_DIR, 'ml.log'),
+    shell: false,
   },
 ];
 
@@ -90,8 +105,26 @@ function savePids() {
   } catch {}
 }
 
-function startService(svc) {
+async function startService(svc) {
   if (shuttingDown) return;
+
+  if (await isPortHealthy(svc.port)) {
+    log(`Service [${svc.name}] is already healthy on port ${svc.port}. Adopting.`);
+    try {
+      const stdout = execSync(`netstat -ano | findstr :${svc.port}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const lines = stdout.trim().split('\n');
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (pid && pid !== '0' && pid !== String(process.pid)) {
+          processes[svc.name] = { pid: parseInt(pid, 10), isAdopted: true };
+          savePids();
+          break;
+        }
+      }
+    } catch {}
+    return;
+  }
 
   log(`Starting service [${svc.name}] on port ${svc.port}...`);
   freePort(svc.port);
@@ -105,7 +138,7 @@ function startService(svc) {
     cwd: svc.cwd,
     env: { ...process.env, PORT: String(svc.port) },
     stdio: ['ignore', 'pipe', 'pipe'],
-    shell: isWin,
+    shell: svc.shell ?? false,
     windowsHide: true,
   });
 
@@ -175,8 +208,31 @@ process.on('unhandledRejection', (reason) => {
   log(`Supervisor Unhandled Rejection: ${reason}`);
 });
 
-log('=== JalaDrishti AI Permanent Live Supervisor Starting ===');
-for (const svc of SERVICES) {
-  startService(svc);
+async function main() {
+  log('=== JalaDrishti AI Permanent Live Supervisor Starting ===');
+  for (const svc of SERVICES) {
+    await startService(svc);
+  }
+  log('=== All services running live. Auto-restart active. ===');
+
+  // Periodic heartbeat & adopted service monitor
+  setInterval(async () => {
+    if (shuttingDown) return;
+    for (const svc of SERVICES) {
+      const proc = processes[svc.name];
+      if (!proc) {
+        startService(svc);
+      } else if (proc.isAdopted) {
+        const healthy = await isPortHealthy(svc.port);
+        if (!healthy) {
+          log(`Adopted service [${svc.name}] became unresponsive. Restarting...`);
+          delete processes[svc.name];
+          startService(svc);
+        }
+      }
+    }
+    savePids();
+  }, 10000);
 }
-log('=== All services running live. Auto-restart active. ===');
+
+main();
