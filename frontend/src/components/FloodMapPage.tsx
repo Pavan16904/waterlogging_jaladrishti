@@ -468,6 +468,55 @@ export function getFeatureBounds(feature: any): [[number, number], [number, numb
   return [[minLng, minLat], [maxLng, maxLat]];
 }
 
+/**
+ * Tailored optimal zoom level for each of Karnataka's 31 districts.
+ * Dense metropolitan cities (e.g. Bengaluru Urban) are framed at zoom 12.0 to showcase urban hotspots,
+ * while territorial districts (e.g. Belagavi, Kalaburagi) maintain balanced framing to avoid over-zooming.
+ */
+export function getDistrictOptimalZoom(districtId?: string): number {
+  if (!districtId) return 11.2;
+  const id = canonicalDistrictId(districtId);
+  switch (id) {
+    case 'bengaluru_urban':
+      return 12.0;
+    case 'dharwad':
+    case 'mysuru':
+    case 'udupi':
+    case 'dakshina_kannada':
+      return 11.6;
+    case 'bengaluru_rural':
+    case 'ramanagara':
+    case 'kolar':
+    case 'chikkaballapura':
+    case 'ballari':
+    case 'gadag':
+    case 'haveri':
+    case 'davangere':
+    case 'mandya':
+    case 'kodagu':
+    case 'hassan':
+    case 'chikkamagaluru':
+    case 'shivamogga':
+    case 'koppal':
+    case 'yadgir':
+    case 'bidar':
+    case 'vijayanagara':
+      return 11.2;
+    case 'belagavi':
+    case 'kalaburagi':
+    case 'tumakuru':
+    case 'uttara_kannada':
+    case 'vijayapura':
+    case 'bagalkot':
+    case 'raichur':
+    case 'chitradurga':
+    case 'chamarajanagar':
+      return 10.4;
+    default:
+      return 11.2;
+  }
+}
+
 const BASEMAP_OPTIONS: BasemapOption[] = [
   // ── GROUP 1: GOOGLE MAPS (MAIN VIEWS) ──
   {
@@ -716,7 +765,7 @@ export function FloodMapPage({
       }
 
       if (flyLat !== null && flyLng !== null) {
-        mapRef.current.flyTo({ center: [flyLng, flyLat], zoom: 13, duration: 1000 });
+        mapRef.current.flyTo({ center: [flyLng, flyLat], zoom: 14.0, duration: 800 });
       }
       highlightHandledRef.current = highlightKey;
     };
@@ -1288,9 +1337,9 @@ export function FloodMapPage({
         ],
       },
       center: [activeDistrict.lng, activeDistrict.lat],
-      zoom: 11.0,
-      minZoom: 5,
-      maxZoom: 18,
+      zoom: getDistrictOptimalZoom(activeDistrict.id),
+      minZoom: 6,
+      maxZoom: 20,
       attributionControl: false,
     });
 
@@ -1358,11 +1407,44 @@ export function FloodMapPage({
     return () => { mounted = false; };
   }, []);
 
-  // Zoom the map according to selected district boundaries for all 31 districts
+  // Zoom the map according to selected district boundaries and waterlogging hotspots for all 31 districts
   const fitToActiveDistrict = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
 
+    const optimalZoom = getDistrictOptimalZoom(activeDistrict.id);
+
+    // Priority 1: If district has multiple mapped incidents, frame active waterlogging hotspots nicely
+    const validCoords = mappedIncidents
+      .filter((inc) => inc.lat !== null && inc.lng !== null && !isNaN(inc.lat) && !isNaN(inc.lng))
+      .map((inc) => [inc.lng!, inc.lat!] as [number, number]);
+
+    if (validCoords.length > 1) {
+      const lats = validCoords.map((c) => c[1]);
+      const lngs = validCoords.map((c) => c[0]);
+      const minLat = Math.min(...lats);
+      const maxLat = Math.max(...lats);
+      const minLng = Math.min(...lngs);
+      const maxLng = Math.max(...lngs);
+
+      // Frame incidents if they have geographic spread
+      if (maxLat - minLat > 0.015 || maxLng - minLng > 0.015) {
+        map.fitBounds(
+          [
+            [minLng, minLat],
+            [maxLng, maxLat],
+          ],
+          {
+            padding: { top: 75, bottom: 75, left: 75, right: 75 },
+            maxZoom: Math.max(optimalZoom, 12.8),
+            duration: 400,
+          }
+        );
+        return;
+      }
+    }
+
+    // Priority 2: Use district boundary polygon with a smart zoom floor
     const cleanId = canonicalDistrictId(activeDistrict.id);
     const feat = districtGeoFeatures[cleanId] ||
                  districtGeoFeatures[activeDistrict.id] ||
@@ -1373,21 +1455,21 @@ export function FloodMapPage({
       const bounds = getFeatureBounds(feat);
       if (bounds) {
         map.fitBounds(bounds, {
-          padding: { top: 50, bottom: 50, left: 50, right: 50 },
-          maxZoom: 11.5,
+          padding: { top: 60, bottom: 60, left: 60, right: 60 },
+          maxZoom: Math.max(optimalZoom, 12.0),
           duration: 400,
         });
         return;
       }
     }
 
-    // Fallback: Centered on district coordinates
+    // Fallback: Centered on district coordinates with tailored optimal zoom
     map.flyTo({
       center: [activeDistrict.lng, activeDistrict.lat],
-      zoom: 10.5,
+      zoom: optimalZoom,
       duration: 400,
     });
-  }, [activeDistrict, districtGeoFeatures]);
+  }, [activeDistrict, districtGeoFeatures, mappedIncidents]);
 
   const prevDistrictIdRef = useRef<string>(activeDistrict.id);
 
@@ -1649,7 +1731,9 @@ export function FloodMapPage({
         e.stopPropagation();
         setSelectedIncident(inc);
         if (inc.lng !== null && inc.lat !== null) {
-          map.flyTo({ center: [inc.lng, inc.lat], zoom: 12.5, duration: 350 });
+          const currentZoom = map.getZoom();
+          const targetZoom = Math.max(currentZoom, 14.5);
+          map.flyTo({ center: [inc.lng, inc.lat], zoom: targetZoom, duration: 400 });
         }
       });
 
@@ -2712,7 +2796,9 @@ export function FloodMapPage({
                         onClick={() => {
                           setSelectedIncident(inc);
                           if (inc.hasCoords && inc.lat !== null && inc.lng !== null) {
-                            mapRef.current?.flyTo({ center: [inc.lng, inc.lat], zoom: 13, duration: 350 });
+                            const currentZoom = mapRef.current?.getZoom() ?? 12;
+                            const targetZoom = Math.max(currentZoom, 14.5);
+                            mapRef.current?.flyTo({ center: [inc.lng, inc.lat], zoom: targetZoom, duration: 400 });
                           }
                         }}
                         className={`group flex cursor-pointer items-center justify-between gap-3 py-3 transition hover:bg-slate-50/80 dark:hover:bg-slate-800/50 ${
@@ -2801,7 +2887,9 @@ export function FloodMapPage({
                       onClick={() => {
                         setSelectedIncident(inc);
                         if (inc.hasCoords && inc.lat !== null && inc.lng !== null) {
-                          mapRef.current?.flyTo({ center: [inc.lng, inc.lat], zoom: 13, duration: 350 });
+                          const currentZoom = mapRef.current?.getZoom() ?? 12;
+                          const targetZoom = Math.max(currentZoom, 14.5);
+                          mapRef.current?.flyTo({ center: [inc.lng, inc.lat], zoom: targetZoom, duration: 400 });
                         }
                       }}
                       className="cursor-pointer transition hover:bg-slate-50 dark:hover:bg-slate-800/50"
@@ -2888,7 +2976,9 @@ export function FloodMapPage({
                     <tr
                       key={wl.id}
                       onClick={() => {
-                        mapRef.current?.flyTo({ center: [wl.lng, wl.lat], zoom: 13, duration: 350 });
+                        const currentZoom = mapRef.current?.getZoom() ?? 12;
+                        const targetZoom = Math.max(currentZoom, 14.5);
+                        mapRef.current?.flyTo({ center: [wl.lng, wl.lat], zoom: targetZoom, duration: 400 });
                       }}
                       className="cursor-pointer transition hover:bg-slate-50 dark:hover:bg-slate-800/50"
                     >
