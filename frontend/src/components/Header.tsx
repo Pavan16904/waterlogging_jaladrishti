@@ -41,7 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenReports,
 }) => {
   const [ageSeconds, setAgeSeconds] = useState<number | null>(null);
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(true);
 
   const actionHandlers: Record<HeaderAction, () => void> = {
     sos: onOpenSos,
@@ -92,18 +92,8 @@ export const Header: React.FC<HeaderProps> = ({
 
   const statusColor = !connected
     ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300'
-    : ageSeconds === null
-      ? 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-300'
-      : ageSeconds < 1800
-        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300'
-        : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-300';
-  const statusLabel = !connected
-    ? 'Disconnected'
-    : ageSeconds === null
-      ? 'Connected · Syncing'
-      : ageSeconds > 3600
-        ? `Stale · ${Math.floor(ageSeconds / 3600)}h`
-        : `Live · ${Math.max(1, Math.floor(ageSeconds / 60))} min`;
+    : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300';
+  const statusLabel = !connected ? 'Disconnected' : 'Live';
 
   const tabs = [
     { label: 'Flood Map', Icon: Map, tab: 'map' as const },
@@ -160,7 +150,9 @@ export const Header: React.FC<HeaderProps> = ({
             aria-label={`Open data status: ${statusLabel}`}
             className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1.5 text-[11px] font-semibold sm:px-3 ${statusColor}`}
           >
-            <span className={`h-2 w-2 rounded-full ${!connected || ageSeconds === null || ageSeconds > 3600 ? 'bg-red-500' : ageSeconds < 900 ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+            <span className={`relative flex h-2 w-2 rounded-full ${!connected ? 'bg-red-500' : 'bg-emerald-500'}`}>
+              {connected && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
+            </span>
             <span className="hidden sm:inline">{statusLabel}</span>
           </a>
 

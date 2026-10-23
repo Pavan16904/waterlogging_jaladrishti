@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import zlib from 'node:zlib';
 import apiRoutes from './routes/api.js';
 import { initializeDatabase, query } from './db/index.js';
 import { seedDatabase } from './db/seed.js';
@@ -15,6 +16,27 @@ app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use(morgan('dev'));
+
+// Built-in lightweight gzip response compression for payloads > 1KB
+app.use((req, res, next) => {
+  const acceptEncoding = (req.headers['accept-encoding'] as string) || '';
+  if (!acceptEncoding.includes('gzip')) return next();
+
+  const originalSend = res.send;
+  res.send = function (body: any): any {
+    if (body && (typeof body === 'string' || Buffer.isBuffer(body))) {
+      const buf = Buffer.isBuffer(body) ? body : Buffer.from(body, 'utf-8');
+      if (buf.length > 1024) {
+        res.setHeader('Content-Encoding', 'gzip');
+        res.removeHeader('Content-Length');
+        const compressed = zlib.gzipSync(buf);
+        return res.end(compressed);
+      }
+    }
+    return originalSend.call(this, body);
+  };
+  next();
+});
 
 // Mount API routes
 app.use('/api', apiRoutes);

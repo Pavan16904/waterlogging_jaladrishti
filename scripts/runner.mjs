@@ -21,6 +21,9 @@ function log(msg) {
   } catch {}
 }
 
+const processes = {};
+let shuttingDown = false;
+
 function freePort(port) {
   try {
     const stdout = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
@@ -29,7 +32,8 @@ function freePort(port) {
       const parts = line.trim().split(/\s+/);
       const state = parts[parts.length - 2];
       const pid = parts[parts.length - 1];
-      if (pid && pid !== '0' && pid !== String(process.pid) && (state === 'LISTENING' || parts.includes('LISTENING'))) {
+      const isTracked = Object.values(processes).some(p => p && String(p.pid) === pid);
+      if (pid && pid !== '0' && pid !== String(process.pid) && !isTracked && (state === 'LISTENING' || parts.includes('LISTENING'))) {
         try {
           execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' });
           log(`Freed port ${port} from stale PID ${pid}`);
@@ -39,35 +43,36 @@ function freePort(port) {
   } catch {}
 }
 
+const isWin = process.platform === 'win32';
+const npmCmd = isWin ? 'npm.cmd' : 'npm';
+const pythonCmd = 'python';
+
 const SERVICES = [
   {
     name: 'backend',
-    command: 'cmd.exe',
-    args: ['/c', 'npm', '--prefix', 'backend', 'run', 'dev'],
+    command: npmCmd,
+    args: ['--prefix', 'backend', 'run', 'dev'],
     cwd: ROOT_DIR,
     port: 5000,
     logFile: path.join(LOGS_DIR, 'backend.log'),
   },
   {
     name: 'frontend',
-    command: 'cmd.exe',
-    args: ['/c', 'npm', '--prefix', 'frontend', 'run', 'dev'],
+    command: npmCmd,
+    args: ['--prefix', 'frontend', 'run', 'dev'],
     cwd: ROOT_DIR,
     port: 3001,
     logFile: path.join(LOGS_DIR, 'frontend.log'),
   },
   {
     name: 'ml-service',
-    command: 'cmd.exe',
-    args: ['/c', 'python', '-m', 'uvicorn', 'main:app', '--app-dir', 'ml_service', '--port', '8000'],
+    command: pythonCmd,
+    args: ['-m', 'uvicorn', 'main:app', '--app-dir', 'ml_service', '--host', '127.0.0.1', '--port', '8000'],
     cwd: ROOT_DIR,
     port: 8000,
     logFile: path.join(LOGS_DIR, 'ml.log'),
   },
 ];
-
-const processes = {};
-let shuttingDown = false;
 
 function savePids() {
   const pids = {
@@ -100,7 +105,7 @@ function startService(svc) {
     cwd: svc.cwd,
     env: { ...process.env, PORT: String(svc.port) },
     stdio: ['ignore', 'pipe', 'pipe'],
-    shell: false,
+    shell: isWin,
     windowsHide: true,
   });
 

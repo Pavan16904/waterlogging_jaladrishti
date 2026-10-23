@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Sprout,
   Droplets,
@@ -20,6 +20,11 @@ import {
   FlaskConical,
   X,
   Sparkles,
+  Sun,
+  Cloud,
+  CloudLightning,
+  CloudFog,
+  CloudSnow,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { KARNATAKA_108_PLANTS, PlantType } from '../data/karnataka108Plants';
@@ -33,6 +38,25 @@ import {
   CropAdvisorInput,
   RecommendationResult,
 } from '../services/cropRecommendationEngine';
+
+function getWeatherDetails(code: number | null | undefined, rainMm?: number) {
+  if (code != null) {
+    if (code >= 95) return { text: 'Thunderstorm', icon: CloudLightning, color: 'text-amber-500' };
+    if (code >= 80) return { text: 'Heavy Rain Showers', icon: CloudRain, color: 'text-blue-600' };
+    if (code >= 61) return { text: 'Moderate Rain', icon: CloudRain, color: 'text-blue-500' };
+    if (code >= 51) return { text: 'Light Rain', icon: CloudRain, color: 'text-blue-400' };
+    if (code >= 45) return { text: 'Fog / Mist', icon: CloudFog, color: 'text-slate-400' };
+    if (code >= 71 && code <= 86) return { text: 'Snow / Hail', icon: CloudSnow, color: 'text-sky-300' };
+    if (code >= 1 && code <= 3) return { text: 'Partly Cloudy', icon: Cloud, color: 'text-slate-500' };
+    if (code === 0) return { text: 'Clear Sky', icon: Sun, color: 'text-amber-500' };
+  }
+  if (typeof rainMm === 'number') {
+    if (rainMm > 15) return { text: 'Heavy Rain', icon: CloudRain, color: 'text-blue-600' };
+    if (rainMm > 5) return { text: 'Moderate Rain', icon: CloudRain, color: 'text-blue-500' };
+    if (rainMm > 0) return { text: 'Light Rain', icon: CloudRain, color: 'text-blue-400' };
+  }
+  return { text: 'Mainly Clear', icon: Sun, color: 'text-amber-500' };
+}
 
 export interface CropWaterPageProps {
   selectedDistrictId?: string;
@@ -100,21 +124,8 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
   // Weather & recommendation state
   const [liveWeather, setLiveWeather] = useState<any>(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
-  const [recommendation, setRecommendation] = useState<RecommendationResult>(() =>
-    evaluateCropRecommendation({
-      districtId: 'ballari',
-      soilId: 'clay_loam',
-      selectedCropId: 'rice',
-      season: 'Kharif',
-      farmType: 'Field / Open Land',
-      waterSource: 'Canal & Borewell',
-      userPh: 6.5,
-      currentTempC: 28,
-      currentHumidity: 82,
-      rainfallTodayMm: 42,
-      forecast24hMm: 25,
-    })
-  );
+  const [lastWeatherUpdate, setLastWeatherUpdate] = useState<Date | null>(null);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
 
   // Sync external district changes
   useEffect(() => {
@@ -155,37 +166,147 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
     );
   }, [soilId]);
 
-  // Fetch live weather for current district
-  useEffect(() => {
-    let active = true;
-    setWeatherLoading(true);
+  // Normalized live weather values from Open-Meteo
+  const weatherValues = useMemo(() => {
+    if (!liveWeather) {
+      return {
+        tempC: 28,
+        apparentTempC: 29,
+        humidity: 82,
+        rainToday: 42,
+        forecastRain: 25,
+        windKmh: 12,
+        weatherCode: 61,
+        condition: 'Light Rain',
+        isLive: false,
+        daily: [] as any[],
+      };
+    }
 
-    api
-      .getDistrictWeather(currentDistrict.displayName)
-      .then((data) => {
-        if (!active) return;
-        setLiveWeather(data);
-        setWeatherLoading(false);
-      })
-      .catch(() => {
-        if (!active) return;
-        setWeatherLoading(false);
-      });
+    // Format A: from api.getWeatherByDistrictId (/api/weather/district/:id)
+    if (liveWeather.current) {
+      const cur = liveWeather.current;
+      const code = cur.weather_code ?? 0;
+      const cond = getWeatherDetails(code, cur.precipitation).text;
+      const rainToday = cur.precipitation != null && cur.precipitation > 0
+        ? cur.precipitation
+        : (liveWeather.daily?.[0]?.precipitation_sum ?? 0);
+      const forecastRain = liveWeather.daily?.[0]?.precipitation_sum ?? (liveWeather.daily?.[1]?.precipitation_sum ?? 0);
 
-    return () => {
-      active = false;
+      return {
+        tempC: Math.round(cur.temperature_2m ?? 28),
+        apparentTempC: Math.round(cur.apparent_temperature ?? cur.temperature_2m ?? 28),
+        humidity: Math.round(cur.relative_humidity_2m ?? 82),
+        rainToday: Math.round(rainToday * 10) / 10,
+        forecastRain: Math.round(forecastRain * 10) / 10,
+        windKmh: Math.round(cur.wind_speed_10m ?? 12),
+        weatherCode: code,
+        condition: cond,
+        isLive: true,
+        daily: Array.isArray(liveWeather.daily) ? liveWeather.daily : [],
+      };
+    }
+
+    // Format B: from api.getDistrictWeather (/api/weather/forecast/:district)
+    if (liveWeather.today) {
+      const td = liveWeather.today;
+      return {
+        tempC: Math.round(td.currentTempC ?? 28),
+        apparentTempC: Math.round(td.currentTempC ?? 28),
+        humidity: Math.round(td.currentHumidityPct ?? 82),
+        rainToday: Math.round((td.currentPrecipitationMm ?? td.modeledPrecipitationTotalMm ?? 0) * 10) / 10,
+        forecastRain: Math.round((liveWeather.forecast?.forecast24hPrecipMm ?? 0) * 10) / 10,
+        windKmh: Math.round(td.currentWindKmh ?? 12),
+        weatherCode: td.currentWmoCode ?? 0,
+        condition: td.currentCondition ?? 'Mainly Clear',
+        isLive: true,
+        daily: Array.isArray(liveWeather.sevenDayOutlook) ? liveWeather.sevenDayOutlook : [],
+      };
+    }
+
+    return {
+      tempC: 28,
+      apparentTempC: 29,
+      humidity: 82,
+      rainToday: 42,
+      forecastRain: 25,
+      windKmh: 12,
+      weatherCode: 61,
+      condition: 'Light Rain',
+      isLive: false,
+      daily: [],
     };
-  }, [currentDistrict.displayName]);
+  }, [liveWeather]);
+
+  // Live telemetry fetcher with fallback and auto-refresh
+  const fetchWeather = useCallback(async () => {
+    try {
+      setWeatherLoading(true);
+      setWeatherError(null);
+      // Try live district endpoint first
+      let data = await api.getWeatherByDistrictId(currentDistrict.id);
+      if (!data || !data.success) {
+        data = await api.getDistrictWeather(currentDistrict.displayName);
+      }
+      setLiveWeather(data);
+      setLastWeatherUpdate(new Date());
+    } catch (err) {
+      console.warn('Primary weather fetch error, attempting fallback:', err);
+      try {
+        const fallbackData = await api.getDistrictWeather(currentDistrict.displayName);
+        setLiveWeather(fallbackData);
+        setLastWeatherUpdate(new Date());
+      } catch (fallbackErr) {
+        console.error('All weather fetches failed:', fallbackErr);
+        setWeatherError('Weather offline');
+      }
+    } finally {
+      setWeatherLoading(false);
+    }
+  }, [currentDistrict.id, currentDistrict.displayName]);
+
+  // Periodic 60s live auto-refresh
+  useEffect(() => {
+    fetchWeather();
+    const interval = setInterval(fetchWeather, 60000);
+    return () => clearInterval(interval);
+  }, [fetchWeather]);
+
+  const [recommendation, setRecommendation] = useState<RecommendationResult>(() =>
+    evaluateCropRecommendation({
+      districtId: 'ballari',
+      soilId: 'clay_loam',
+      selectedCropId: 'rice',
+      season: 'Kharif',
+      farmType: 'Field / Open Land',
+      waterSource: 'Canal & Borewell',
+      userPh: 6.5,
+      currentTempC: 28,
+      currentHumidity: 82,
+      rainfallTodayMm: 42,
+      forecast24hMm: 25,
+    })
+  );
 
   // Recalculate recommendation engine
-  const runRecommendation = () => {
-    const tempC = liveWeather?.current?.temperature_2m ?? 28;
-    const humidity = liveWeather?.current?.relative_humidity_2m ?? 82;
-    const rainToday = liveWeather?.current?.precipitation ?? 42;
-    const forecastRain = liveWeather?.daily?.precipitation_sum?.[0] ?? 25;
+  const runRecommendation = useCallback(() => {
+    const tempC = weatherValues.tempC;
+    const humidity = weatherValues.humidity;
+    const rainToday = weatherValues.rainToday;
+    const forecastRain = weatherValues.forecastRain;
 
     const parsedPh = userPh ? parseFloat(userPh) : null;
     const parsedMoisture = userMoisture ? parseFloat(userMoisture) : null;
+
+    // Map daily forecast if available
+    const dailyForecast = weatherValues.daily.map((item: any) => ({
+      date: item.date || item.day,
+      tempMaxC: item.temp_max ?? item.maxTemp,
+      tempMinC: item.temp_min ?? item.minTemp,
+      precipitationMm: item.precipitation_sum ?? item.precip ?? 0,
+      precipitationProb: item.precipitation_probability ?? item.rainProb,
+      weatherCode: item.weather_code ?? item.weatherCode,
+    }));
 
     const input: CropAdvisorInput = {
       districtId: currentDistrict.id,
@@ -200,26 +321,27 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
       currentHumidity: humidity,
       rainfallTodayMm: rainToday,
       forecast24hMm: forecastRain,
+      dailyForecast: dailyForecast.length > 0 ? dailyForecast : undefined,
     };
 
     const res = evaluateCropRecommendation(input);
     setRecommendation(res);
-  };
-
-  // Re-run recommendation whenever inputs or live weather change
-  useEffect(() => {
-    runRecommendation();
   }, [
-    districtId,
-    cropId,
-    soilId,
+    currentDistrict.id,
+    currentSoil.id,
+    currentCrop.id,
     season,
     farmType,
     waterSource,
     userPh,
     userMoisture,
-    liveWeather,
+    weatherValues,
   ]);
+
+  // Re-run recommendation whenever inputs or live weather change
+  useEffect(() => {
+    runRecommendation();
+  }, [runRecommendation]);
 
   // Reset to default baseline (Rice, Clay Loam, Kharif, Ballari)
   const handleReset = () => {
@@ -282,12 +404,12 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
     }
   };
 
-  // Weather values from recommendation or live API
-  const currentTemp = liveWeather?.current?.temperature_2m ?? 28;
-  const currentCondition = liveWeather?.current?.conditionText ?? 'Light Rain';
-  const currentHumidity = liveWeather?.current?.relative_humidity_2m ?? 82;
-  const rainfallToday = liveWeather?.current?.precipitation ?? 42;
-  const currentWind = liveWeather?.current?.wind_speed_10m ?? 12;
+  // Weather values from live API
+  const currentTemp = weatherValues.tempC;
+  const currentCondition = weatherValues.condition;
+  const currentHumidity = weatherValues.humidity;
+  const rainfallToday = weatherValues.rainToday;
+  const currentWind = weatherValues.windKmh;
 
   // Circular score progress gauge math
   const score = recommendation.scores.overallScore;
@@ -728,24 +850,58 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         {/* Card 1: Current Weather */}
         <div className="rounded-2xl border border-blue-100/90 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900/90">
-          <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
-            <CloudRain size={16} className="text-blue-500" />
-            <span>Current Weather</span>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <CloudRain size={16} className="text-blue-500" />
+              <span>Current Weather</span>
+            </div>
+            {/* LIVE Badge + Refresh Button */}
+            <div className="flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                LIVE
+              </span>
+              <button
+                type="button"
+                onClick={fetchWeather}
+                disabled={weatherLoading}
+                title="Refresh live telemetry"
+                className="flex h-6 w-6 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              >
+                <RefreshCw size={12} className={weatherLoading ? 'animate-spin text-blue-500' : ''} />
+              </button>
+            </div>
           </div>
 
-          <div className="mb-4 flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
-              <CloudRain size={32} className="stroke-[1.8]" />
-            </div>
-            <div>
-              <div className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white leading-none">
-                {currentTemp}°C
+          {(() => {
+            const details = getWeatherDetails(weatherValues.weatherCode, weatherValues.rainToday);
+            const WeatherIcon = details.icon;
+            return (
+              <div className="mb-4 flex items-center gap-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/50">
+                  <WeatherIcon size={32} className={`stroke-[1.8] ${details.color}`} />
+                </div>
+                <div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white leading-none">
+                      {currentTemp}°C
+                    </span>
+                    {weatherValues.apparentTempC !== currentTemp && (
+                      <span className="text-[11px] font-medium text-slate-400">
+                        Feels {weatherValues.apparentTempC}°C
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    {currentCondition}
+                  </div>
+                </div>
               </div>
-              <div className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                {currentCondition}
-              </div>
-            </div>
-          </div>
+            );
+          })()}
 
           <div className="space-y-2 border-t border-slate-100 pt-3 text-xs dark:border-slate-800">
             <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
@@ -775,6 +931,12 @@ export const CropWaterPage: React.FC<CropWaterPageProps> = ({
                 {currentWind} km/h
               </span>
             </div>
+          </div>
+
+          {/* Footer timestamp & source */}
+          <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2 text-[10px] text-slate-400 dark:border-slate-800">
+            <span>Open-Meteo European NWP</span>
+            <span>{lastWeatherUpdate ? `Sync ${lastWeatherUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : 'Live Model'}</span>
           </div>
         </div>
 

@@ -41,7 +41,7 @@ async function main() {
 
   const results = await Promise.all([
     checkEndpoint('Backend Express API', 'http://127.0.0.1:5000/health', 5000),
-    checkEndpoint('Frontend Vite Web App', 'http://localhost:3001/', 3001),
+    checkEndpoint('Frontend Vite Web App', 'http://127.0.0.1:3001/', 3001),
     checkEndpoint('FastAPI ML Service', 'http://127.0.0.1:8000/docs', 8000),
   ]);
 

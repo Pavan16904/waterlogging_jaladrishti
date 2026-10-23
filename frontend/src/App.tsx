@@ -1,22 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { api } from './services/api';
 import { StudyArea, SeverityZone, DrainageAdvisory, AnalysisRun, IoTSensor, RadarMeta, LiveAlert } from './types';
 import { Header, MainTabType } from './components/Header';
 import { PageHeader, getTodayInKolkata } from './components/PageHeader';
 import { FloodMapPage } from './components/FloodMapPage';
-import { WeatherPage } from './components/WeatherPage';
-import { CropWaterPage } from './components/CropWaterPage';
-import { DrainageActionsPage } from './components/DrainageActionsPage';
-import { ModelEvaluationModal } from './components/ModelEvaluationModal';
-import { ExportReportModal } from './components/ExportReportModal';
-import { LiveIoTSensorsDrawer } from './components/LiveIoTSensorsDrawer';
-import { CitizenLifelineModal } from './components/CitizenLifelineModal';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLanguage } from './context/LanguageContext';
-import { ProjectOverviewPage } from './components/ProjectOverviewPage';
-import { NotFoundPage } from './components/NotFoundPage';
 import { usePageMeta, useHashRouter, HASH_TO_TAB } from './hooks/usePageMeta';
 import { useLive, LiveEvent } from './hooks/useLive';
+
+// Lazy-load secondary views and heavy on-demand modals to dramatically accelerate initial page load
+const WeatherPage = lazy(() => import('./components/WeatherPage').then((m) => ({ default: m.WeatherPage })));
+const CropWaterPage = lazy(() => import('./components/CropWaterPage').then((m) => ({ default: m.CropWaterPage })));
+const DrainageActionsPage = lazy(() => import('./components/DrainageActionsPage').then((m) => ({ default: m.DrainageActionsPage })));
+const ProjectOverviewPage = lazy(() => import('./components/ProjectOverviewPage').then((m) => ({ default: m.ProjectOverviewPage })));
+const NotFoundPage = lazy(() => import('./components/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
+const ModelEvaluationModal = lazy(() => import('./components/ModelEvaluationModal').then((m) => ({ default: m.ModelEvaluationModal })));
+const ExportReportModal = lazy(() => import('./components/ExportReportModal').then((m) => ({ default: m.ExportReportModal })));
+const LiveIoTSensorsDrawer = lazy(() => import('./components/LiveIoTSensorsDrawer').then((m) => ({ default: m.LiveIoTSensorsDrawer })));
+const CitizenLifelineModal = lazy(() => import('./components/CitizenLifelineModal').then((m) => ({ default: m.CitizenLifelineModal })));
 
 export function App() {
   const { t } = useLanguage();
@@ -299,13 +301,15 @@ export function App() {
   // Render custom 404 for unknown URL hashes
   if (isUnknownRoute) {
     return (
-      <NotFoundPage
-        onNavigateHome={() => {
-          setIsUnknownRoute(false);
-          setActiveTab('map');
-          window.history.replaceState(null, '', '/');
-        }}
-      />
+      <Suspense fallback={null}>
+        <NotFoundPage
+          onNavigateHome={() => {
+            setIsUnknownRoute(false);
+            setActiveTab('map');
+            window.history.replaceState(null, '', '/');
+          }}
+        />
+      </Suspense>
     );
   }
 
@@ -345,13 +349,15 @@ export function App() {
               transition={{ duration: 0.2 }}
               className="flex-1 flex flex-col"
             >
-              <ProjectOverviewPage
-                onNavigateToFloodMap={() => setActiveTab('map')}
-                onNavigateToWeather={() => setActiveTab('weather')}
-                onNavigateToCropWater={() => setActiveTab('crop-water')}
-                onNavigateToDrainage={() => setActiveTab('drainage')}
-                scoresKey={scoresKey}
-              />
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center p-12 text-slate-400">Loading overview...</div>}>
+                <ProjectOverviewPage
+                  onNavigateToFloodMap={() => setActiveTab('map')}
+                  onNavigateToWeather={() => setActiveTab('weather')}
+                  onNavigateToCropWater={() => setActiveTab('crop-water')}
+                  onNavigateToDrainage={() => setActiveTab('drainage')}
+                  scoresKey={scoresKey}
+                />
+              </Suspense>
             </motion.div>
           )}
 
@@ -390,16 +396,18 @@ export function App() {
               transition={{ duration: 0.2 }}
               className="flex-1 flex flex-col"
             >
-              <WeatherPage
-                selectedDistrictId={selectedDistrict}
-                onSelectedDistrictIdChange={setSelectedDistrict}
-                selectedDate={selectedDate}
-                onNavigateToCropWater={(district) => {
-                  setSelectedDistrict(district || selectedDistrict);
-                  setActiveTab('crop-water');
-                }}
-                onNavigateToFloodMap={() => setActiveTab('map')}
-              />
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center p-12 text-slate-400">Loading weather & radar...</div>}>
+                <WeatherPage
+                  selectedDistrictId={selectedDistrict}
+                  onSelectedDistrictIdChange={setSelectedDistrict}
+                  selectedDate={selectedDate}
+                  onNavigateToCropWater={(district) => {
+                    setSelectedDistrict(district || selectedDistrict);
+                    setActiveTab('crop-water');
+                  }}
+                  onNavigateToFloodMap={() => setActiveTab('map')}
+                />
+              </Suspense>
             </motion.div>
           )}
 
@@ -412,11 +420,13 @@ export function App() {
               transition={{ duration: 0.2 }}
               className="flex-1 flex flex-col"
             >
-              <CropWaterPage
-                selectedDistrictId={selectedDistrict}
-                onSelectedDistrictIdChange={setSelectedDistrict}
-                selectedDate={selectedDate}
-              />
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center p-12 text-slate-400">Loading crop advisor...</div>}>
+                <CropWaterPage
+                  selectedDistrictId={selectedDistrict}
+                  onSelectedDistrictIdChange={setSelectedDistrict}
+                  selectedDate={selectedDate}
+                />
+              </Suspense>
             </motion.div>
           )}
 
@@ -429,23 +439,25 @@ export function App() {
               transition={{ duration: 0.2 }}
               className="flex-1 flex flex-col"
             >
-              <DrainageActionsPage
-                advisories={advisories}
-                zones={zones}
-                studyArea={currentArea}
-                selectedDistrictId={selectedDistrict}
-                onSelectedDistrictIdChange={setSelectedDistrict}
-                selectedDate={selectedDate}
-                onOpenExportModal={() => setIsExportOpen(true)}
-                onNavigateToMapWithDistrict={(districtId, lat, lng, locationName) => {
-                  setHighlightDrainageDistrictId(districtId || null);
-                  setHighlightDrainageLocation(locationName || null);
-                  setSelectedDistrict(districtId);
-                  setActiveTab('map');
-                }}
-                highlightActionId={highlightDrainageActionId}
-                highlightLocation={highlightDrainageLocation}
-              />
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center p-12 text-slate-400">Loading drainage advisory...</div>}>
+                <DrainageActionsPage
+                  advisories={advisories}
+                  zones={zones}
+                  studyArea={currentArea}
+                  selectedDistrictId={selectedDistrict}
+                  onSelectedDistrictIdChange={setSelectedDistrict}
+                  selectedDate={selectedDate}
+                  onOpenExportModal={() => setIsExportOpen(true)}
+                  onNavigateToMapWithDistrict={(districtId, lat, lng, locationName) => {
+                    setHighlightDrainageDistrictId(districtId || null);
+                    setHighlightDrainageLocation(locationName || null);
+                    setSelectedDistrict(districtId);
+                    setActiveTab('map');
+                  }}
+                  highlightActionId={highlightDrainageActionId}
+                  highlightLocation={highlightDrainageLocation}
+                />
+              </Suspense>
             </motion.div>
           )}
         </AnimatePresence>
@@ -456,35 +468,49 @@ export function App() {
       </footer>
 
       {/* Global Live IoT Sensors Telemetry Drawer */}
-      <LiveIoTSensorsDrawer
-        isOpen={isIoTDrawerOpen}
-        onClose={() => setIsIoTDrawerOpen(false)}
-        sensors={iotSensors}
-        onRefresh={loadRealtimeTelemetry}
-      />
-
-
+      {isIoTDrawerOpen && (
+        <Suspense fallback={null}>
+          <LiveIoTSensorsDrawer
+            isOpen={isIoTDrawerOpen}
+            onClose={() => setIsIoTDrawerOpen(false)}
+            sensors={iotSensors}
+            onRefresh={loadRealtimeTelemetry}
+          />
+        </Suspense>
+      )}
 
       {/* Global Citizen Lifeline, Crowdsourced SOS & Shelter Center */}
-      <CitizenLifelineModal
-        isOpen={isCitizenLifelineOpen}
-        onClose={() => setIsCitizenLifelineOpen(false)}
-      />
+      {isCitizenLifelineOpen && (
+        <Suspense fallback={null}>
+          <CitizenLifelineModal
+            isOpen={isCitizenLifelineOpen}
+            onClose={() => setIsCitizenLifelineOpen(false)}
+          />
+        </Suspense>
+      )}
 
       {/* Official Engineering & PDF Export Modal */}
-      <ExportReportModal
-        isOpen={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-        studyArea={currentArea}
-        selectedDistrict={selectedDistrict}
-        liveWeatherData={liveRainfallData}
-      />
+      {isExportOpen && (
+        <Suspense fallback={null}>
+          <ExportReportModal
+            isOpen={isExportOpen}
+            onClose={() => setIsExportOpen(false)}
+            studyArea={currentArea}
+            selectedDistrict={selectedDistrict}
+            liveWeatherData={liveRainfallData}
+          />
+        </Suspense>
+      )}
 
       {/* AI Model Architecture & ROC/Metrics Modal */}
-      <ModelEvaluationModal
-        isOpen={isModelOpen}
-        onClose={() => setIsModelOpen(false)}
-      />
+      {isModelOpen && (
+        <Suspense fallback={null}>
+          <ModelEvaluationModal
+            isOpen={isModelOpen}
+            onClose={() => setIsModelOpen(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

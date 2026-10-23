@@ -7,6 +7,16 @@ import { KARNATAKA_108_PLANTS, PlantType } from '../data/karnataka108Plants';
 import { KARNATAKA_SOILS, SoilTypeInfo } from '../data/karnatakaSoils';
 import { KARNATAKA_31_DISTRICTS_WEATHER, WeatherDistrict } from '../data/karnatakaDistrictsWeather';
 
+export interface DailyForecastInput {
+  date: string;
+  day?: string;
+  tempMaxC?: number;
+  tempMinC?: number;
+  precipitationMm?: number;
+  precipitationProb?: number;
+  weatherCode?: number;
+}
+
 export interface CropAdvisorInput {
   districtId: string;
   soilId: string;
@@ -20,6 +30,7 @@ export interface CropAdvisorInput {
   currentHumidity?: number;
   rainfallTodayMm?: number;
   forecast24hMm?: number;
+  dailyForecast?: DailyForecastInput[];
 }
 
 export interface SuitabilityScoreBreakdown {
@@ -264,36 +275,84 @@ export function evaluateCropRecommendation(input: CropAdvisorInput): Recommendat
   const today = new Date();
   const sevenDayImpact = [];
 
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    const dayLabel = weekdays[(today.getDay() + i) % 7];
-    const dateFormatted = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-    const rainP = Math.max(30, 80 - i * 6);
-    let impactLabel: 'Favourable' | 'Moderate' | 'Low Risk' | 'Adverse' = 'Favourable';
-    let impactColor = 'bg-emerald-100 text-emerald-800';
+  if (input.dailyForecast && input.dailyForecast.length >= 7) {
+    const calendarDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    for (let i = 0; i < 7; i++) {
+      const item = input.dailyForecast[i];
+      const d = item.date ? new Date(item.date) : new Date(today.getTime() + i * 86400000);
+      const dayLabel = item.day || (!isNaN(d.getTime()) ? calendarDays[d.getDay()] : weekdays[(today.getDay() + i) % 7]);
+      const dateFormatted = !isNaN(d.getTime())
+        ? d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+        : `Day ${i + 1}`;
+      const rainP = item.precipitationProb != null
+        ? Math.round(item.precipitationProb)
+        : (item.precipitationMm != null && item.precipitationMm > 0 ? Math.min(95, Math.round(item.precipitationMm * 8)) : 20);
 
-    if (rainP > 70) {
-      impactLabel = 'Favourable';
-      impactColor = 'bg-emerald-100 text-emerald-800';
-    } else if (rainP >= 50) {
-      impactLabel = 'Moderate';
-      impactColor = 'bg-amber-100 text-amber-800';
-    } else {
-      impactLabel = 'Low Risk';
-      impactColor = 'bg-emerald-50 text-emerald-700';
+      const code = item.weatherCode ?? 0;
+      let iconEmoji = '⛅';
+      if (code >= 95) iconEmoji = '⛈️';
+      else if (code >= 80) iconEmoji = '🌧️';
+      else if (code >= 51) iconEmoji = '🌦️';
+      else if (code === 0) iconEmoji = '☀️';
+      else if (rainP > 60) iconEmoji = '🌧️';
+
+      let impactLabel: 'Favourable' | 'Moderate' | 'Low Risk' | 'Adverse' = 'Favourable';
+      let impactColor = 'bg-emerald-100 text-emerald-800';
+
+      if (rainP > 70) {
+        impactLabel = crop.drainageTolerance === 'Low' ? 'Moderate' : 'Favourable';
+        impactColor = crop.drainageTolerance === 'Low' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800';
+      } else if (rainP >= 40) {
+        impactLabel = 'Moderate';
+        impactColor = 'bg-amber-100 text-amber-800';
+      } else {
+        impactLabel = 'Low Risk';
+        impactColor = 'bg-emerald-50 text-emerald-700';
+      }
+
+      sevenDayImpact.push({
+        day: dayLabel,
+        dateFormatted,
+        iconEmoji,
+        maxTemp: item.tempMaxC != null ? Math.round(item.tempMaxC) : Math.round(currentTemp + (i % 2 === 0 ? 1 : -1)),
+        minTemp: item.tempMinC != null ? Math.round(item.tempMinC) : Math.round(currentTemp - 6 + (i % 3)),
+        rainProb: rainP,
+        impactLabel,
+        impactColor,
+      });
     }
+  } else {
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const dayLabel = weekdays[(today.getDay() + i) % 7];
+      const dateFormatted = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+      const rainP = Math.max(30, 80 - i * 6);
+      let impactLabel: 'Favourable' | 'Moderate' | 'Low Risk' | 'Adverse' = 'Favourable';
+      let impactColor = 'bg-emerald-100 text-emerald-800';
 
-    sevenDayImpact.push({
-      day: dayLabel,
-      dateFormatted,
-      iconEmoji: rainP > 60 ? '🌧️' : '⛅',
-      maxTemp: Math.round(currentTemp + (i % 2 === 0 ? 1 : -1)),
-      minTemp: Math.round(currentTemp - 6 + (i % 3)),
-      rainProb: rainP,
-      impactLabel,
-      impactColor,
-    });
+      if (rainP > 70) {
+        impactLabel = 'Favourable';
+        impactColor = 'bg-emerald-100 text-emerald-800';
+      } else if (rainP >= 50) {
+        impactLabel = 'Moderate';
+        impactColor = 'bg-amber-100 text-amber-800';
+      } else {
+        impactLabel = 'Low Risk';
+        impactColor = 'bg-emerald-50 text-emerald-700';
+      }
+
+      sevenDayImpact.push({
+        day: dayLabel,
+        dateFormatted,
+        iconEmoji: rainP > 60 ? '🌧️' : '⛅',
+        maxTemp: Math.round(currentTemp + (i % 2 === 0 ? 1 : -1)),
+        minTemp: Math.round(currentTemp - 6 + (i % 3)),
+        rainProb: rainP,
+        impactLabel,
+        impactColor,
+      });
+    }
   }
 
   // Key Advisories

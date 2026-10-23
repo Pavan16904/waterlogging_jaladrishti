@@ -638,6 +638,9 @@ const BALLARI_WATER_LEVELS: WaterLevelStation[] = [
   },
 ];
 
+// Module-level cache for modelled H3 hex scores across component re-renders
+const HEX_SCORES_CACHE = new Map<string, any[]>();
+
 export function FloodMapPage({
   selectedDistrict = 'Bengaluru Urban',
   onDistrictChange,
@@ -813,8 +816,6 @@ export function FloodMapPage({
       .catch((err) => console.warn('Weather fetch error:', err));
     return () => { mounted = false; };
   }, [activeDistrict.id, scoresKey]);
-
-  const HEX_SCORES_CACHE = new Map<string, any[]>();
 
   // Fetch Modelled H3 Risk Hexes for Flood Risk Overlay
   useEffect(() => {
