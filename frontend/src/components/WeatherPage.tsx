@@ -472,44 +472,36 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
   }, [hourly, currentHourIndex, current, daily, todayRainfallData]);
 
   const weatherAlerts = useMemo(() => {
-    const alerts = [];
-    const maxRain24 = daily[0]?.precipitation_sum ?? 25;
-    const isThunderstorm = daily[0]?.weather_code != null && daily[0].weather_code >= 95;
-
-    if (maxRain24 > 30 || isThunderstorm) {
-      alerts.push({
+    return [
+      {
         id: 'alt-1',
-        severity: 'Severe',
+        severity: 'Moderate',
         icon: AlertTriangle,
-        iconBg: 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400',
-        title: 'Heavy rainfall expected',
-        desc: 'Between 2 PM – 8 PM with localized water accumulation.',
-        timeText: `${formattedTodayDate.slice(0, 6)}, 06:00 AM`,
-      });
-    }
-
-    alerts.push({
-      id: 'alt-2',
-      severity: 'High',
-      icon: AlertCircle,
-      iconBg: 'bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400',
-      title: 'Possible thunderstorms',
-      desc: 'Atmospheric instability in afternoon convective band.',
-      timeText: `${formattedTodayDate.slice(0, 6)}, 05:30 AM`,
-    });
-
-    alerts.push({
-      id: 'alt-3',
-      severity: 'Moderate',
-      icon: ShieldAlert,
-      iconBg: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/60 dark:text-yellow-400',
-      title: 'Moderate surface wind',
-      desc: `Wind gusts up to ${windGusts} km/h across open areas.`,
-      timeText: `${formattedTodayDate.slice(0, 6)}, 05:00 AM`,
-    });
-
-    return alerts;
-  }, [daily, windGusts, formattedTodayDate]);
+        iconBg: 'bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400',
+        title: 'Possible thunderstorms',
+        desc: 'Likely in the afternoon.',
+        timeText: `${formattedTodayDate.slice(0, 6)}, 05:30 AM`,
+      },
+      {
+        id: 'alt-2',
+        severity: 'Advisory',
+        icon: Wind,
+        iconBg: 'bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400',
+        title: 'Moderate winds',
+        desc: `Wind speed up to ${windGusts > 20 ? windGusts : 25} km/h.`,
+        timeText: `${formattedTodayDate.slice(0, 6)}, 05:00 AM`,
+      },
+      {
+        id: 'alt-3',
+        severity: 'Info',
+        icon: CheckCircle2,
+        iconBg: 'bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400',
+        title: 'No heatwave conditions',
+        desc: 'Temperatures within normal range.',
+        timeText: `${formattedTodayDate.slice(0, 6)}, 04:30 AM`,
+      },
+    ];
+  }, [formattedTodayDate, windGusts]);
 
   const filteredDistricts = useMemo(() => {
     if (!districtSearchQuery.trim()) return KARNATAKA_31_DISTRICTS_WEATHER;
@@ -537,10 +529,10 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl dark:text-white">
-              Weather Observatory
+              Weather
             </h1>
             <p className="text-xs text-slate-500 sm:text-sm dark:text-slate-400">
-              Real-time weather parameters and 7-day multi-source forecast for Karnataka
+              Real-time and forecasted weather conditions for flood risk assessment
             </p>
           </div>
         </div>
@@ -682,15 +674,6 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
             </div>
             <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
               <div className="flex items-center gap-1.5">
-                <CloudRain size={13} className="text-blue-500" />
-                <span>Rain Probability</span>
-              </div>
-              <span className="font-semibold text-slate-900 dark:text-white">
-                {precipProb}%
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-              <div className="flex items-center gap-1.5">
                 <Droplets size={13} className="text-blue-500" />
                 <span>Humidity</span>
               </div>
@@ -704,25 +687,25 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
                 <span>Wind Speed</span>
               </div>
               <span className="font-semibold text-slate-900 dark:text-white">
-                {windSpeed} km/h ({windDirection})
+                {windSpeed} km/h
               </span>
             </div>
             <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
               <div className="flex items-center gap-1.5">
                 <Compass size={13} className="text-blue-500" />
-                <span>Surface Pressure</span>
+                <span>Wind Direction</span>
               </div>
               <span className="font-semibold text-slate-900 dark:text-white">
-                {pressure} hPa
+                {windDirection}
               </span>
             </div>
             <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
               <div className="flex items-center gap-1.5">
-                <Cloud size={13} className="text-blue-500" />
-                <span>Cloud Cover</span>
+                <Gauge size={13} className="text-blue-500" />
+                <span>Pressure</span>
               </div>
               <span className="font-semibold text-slate-900 dark:text-white">
-                {cloudCover}%
+                {pressure} hPa
               </span>
             </div>
           </div>
@@ -744,7 +727,7 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
                 {todayRainfallData.totalMm} mm
               </div>
               <div className="mt-1 text-[11px] text-slate-400">
-                Accumulated till {formattedCurrentTime}
+                (till {formattedCurrentTime.toLowerCase()})
               </div>
             </div>
           </div>
@@ -826,7 +809,7 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
                     {slot.temp}°C
                   </span>
                   <span className="text-[9px] font-semibold text-blue-600 dark:text-blue-400">
-                    {slot.prob > 0 ? `💧 ${slot.prob}%` : (slot.rain > 0 ? `${slot.rain} mm` : '0%')}
+                    {slot.rain} mm
                   </span>
                 </div>
               );
@@ -845,7 +828,17 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
             <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
               <div className="flex items-center gap-1.5">
                 <CloudRain size={13} className="text-blue-500" />
-                <span>Expected Rain (24h)</span>
+                <span>Daily Rainfall (till now)</span>
+              </div>
+              <span className="font-semibold text-slate-900 dark:text-white">
+                {todayRainfallData.totalMm} mm
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+              <div className="flex items-center gap-1.5">
+                <Droplets size={13} className="text-blue-500" />
+                <span>Expected Rainfall (Next 24 hrs)</span>
               </div>
               <span className="font-semibold text-slate-900 dark:text-white">
                 {expectedRain24h}
@@ -865,7 +858,7 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
             <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
               <div className="flex items-center gap-1.5">
                 <Wind size={13} className="text-blue-500" />
-                <span>Wind Gusts</span>
+                <span>Wind Speed</span>
               </div>
               <span className="font-semibold text-slate-900 dark:text-white">
                 {windSpeed} – {windGusts} km/h
@@ -875,10 +868,10 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
             <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
               <div className="flex items-center gap-1.5">
                 <Droplets size={13} className="text-blue-500" />
-                <span>Dew Point</span>
+                <span>Humidity</span>
               </div>
               <span className="font-semibold text-slate-900 dark:text-white">
-                {dewPoint}°C
+                {humidity}%
               </span>
             </div>
 
@@ -891,73 +884,101 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
                 {currentVisibilityKm} km
               </span>
             </div>
+          </div>
+        </div>
+      </div>
 
-            <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-              <div className="flex items-center gap-1.5">
-                <Sun size={13} className="text-amber-500" />
-                <span>UV Index</span>
-              </div>
-              <span className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold ${getUvBadge(uvIndexVal).color}`}>
-                {getUvBadge(uvIndexVal).text}
-              </span>
+      {/* ── 3. ROW 2: 2 CARDS (Hourly Weather Forecast + 7-Day Weather Forecast side by side) ── */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+        {/* Left: Hourly Weather Forecast (Next 24 Hours) */}
+        <div className="rounded-2xl border border-blue-100/90 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900/90 lg:col-span-7 flex flex-col justify-between">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <Clock size={16} className="text-blue-500" />
+              <span>Hourly Weather Forecast (Next 24 Hours)</span>
+            </div>
+            <span className="text-[10px] font-medium text-slate-400">
+              Starts {next24HoursList[0]?.time || '10 PM'}
+            </span>
+          </div>
+
+          <div className="overflow-x-auto pb-1 scrollbar-thin">
+            <div className="flex items-center gap-2 min-w-max py-1">
+              {next24HoursList.slice(0, 14).map((h, idx) => {
+                const HIcon = h.icon;
+                return (
+                  <div
+                    key={idx}
+                    className="flex flex-col items-center justify-between rounded-xl bg-slate-50/70 p-2 text-center dark:bg-slate-800/50 w-[52px] shrink-0"
+                  >
+                    <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                      {h.time}
+                    </span>
+                    <div className="my-2 flex h-6 w-6 items-center justify-center">
+                      <HIcon size={18} className="text-blue-500" />
+                    </div>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      {h.temp}°C
+                    </span>
+                    <span className="mt-1 text-[9px] font-semibold text-blue-600 dark:text-blue-400 whitespace-nowrap">
+                      {h.rain > 0 ? `${h.rain} mm` : '0 mm'}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
-      </div>
 
-      {/* ── 3. ROW 2: 7-DAY COMPREHENSIVE FORECAST (Matching CropWaterPage 7-Day Grid) ── */}
-      <div className="rounded-2xl border border-blue-100/90 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900/90">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
-            <Calendar size={16} className="text-blue-500" />
-            <span>7-Day Comprehensive Weather Forecast ({district.displayName})</span>
+        {/* Right: 7-Day Weather Forecast */}
+        <div className="rounded-2xl border border-blue-100/90 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900/90 lg:col-span-5 flex flex-col justify-between">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <Calendar size={16} className="text-blue-500" />
+              <span>7-Day Weather Forecast</span>
+            </div>
+            <span className="text-[10px] font-medium text-slate-400">Today + 6 Days</span>
           </div>
-          <span className="text-[10px] font-medium text-slate-400">Today + 6 Days</span>
-        </div>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7 text-center">
-          {sevenDayForecast.map((d, i) => {
-            const DayIcon = d.icon;
-            return (
-              <div
-                key={i}
-                className={`flex flex-col items-center rounded-xl p-2.5 transition ${
-                  i === 0
-                    ? 'border border-blue-200 bg-blue-50/60 shadow-xs dark:border-blue-900/60 dark:bg-blue-950/40'
-                    : 'bg-slate-50/80 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-800'
-                }`}
-              >
-                <div className="text-[10px] font-bold text-slate-700 dark:text-slate-200">
-                  {d.weekday}
-                </div>
-                <div className="text-[9px] text-slate-400">{d.dateFormatted}</div>
-                <div className="my-2 flex h-8 items-center justify-center">
-                  <DayIcon size={24} className={i === 0 ? 'text-blue-600 dark:text-blue-400' : 'text-blue-500'} />
-                </div>
-                <div className="text-[11px] font-bold text-slate-800 dark:text-slate-100">
-                  {d.maxT}° / {d.minT}°
-                </div>
-                <div className="mt-1 text-[10px] font-medium text-blue-500">
-                  💧 {d.prob}%
-                </div>
-                <span
-                  className="mt-1.5 rounded-sm bg-blue-100/70 px-1.5 py-0.5 text-[8px] font-bold text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 line-clamp-1"
+          <div className="grid grid-cols-7 gap-1 text-center">
+            {sevenDayForecast.map((d, i) => {
+              const DayIcon = d.icon;
+              return (
+                <div
+                  key={i}
+                  className={`flex flex-col items-center rounded-xl p-1.5 transition ${
+                    i === 0
+                      ? 'border border-blue-300 bg-blue-50/70 shadow-xs dark:border-blue-700 dark:bg-blue-950/50'
+                      : 'bg-slate-50/70 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800'
+                  }`}
                 >
-                  {d.conditionText}
-                </span>
-              </div>
-            );
-          })}
+                  <div className="text-[10px] font-bold text-slate-700 dark:text-slate-200">
+                    {d.weekday}
+                  </div>
+                  <div className="text-[8px] text-slate-400 whitespace-nowrap">{d.dateFormatted}</div>
+                  <div className="my-2 flex h-6 items-center justify-center">
+                    <DayIcon size={18} className={i === 0 ? 'text-blue-600 dark:text-blue-400' : 'text-blue-500'} />
+                  </div>
+                  <div className="text-[10px] font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                    {d.maxT}° / {d.minT}°
+                  </div>
+                  <div className="mt-1 text-[9px] font-medium text-blue-500 whitespace-nowrap">
+                    💧 {d.prob}%
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      {/* ── 4. ROW 3: 3 BENTO CARDS (Rainfall Summary, Active Advisories, Data Sources) ── */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      {/* ── 4. ROW 3: 4 BENTO CARDS (Rainfall Summary, Other Weather Parameters, Weather Alerts, Data Sources) ── */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {/* Card 1: Rainfall Summary */}
         <div className="rounded-2xl border border-blue-100/90 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900/90">
           <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
             <Droplets size={16} className="text-blue-500" />
-            <span>Rainfall Summary & History</span>
+            <span>Rainfall Summary</span>
           </div>
 
           <div className="space-y-2.5 text-xs">
@@ -994,12 +1015,68 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
           </div>
         </div>
 
-        {/* Card 2: Active Weather Advisories */}
+        {/* Card 2: Other Weather Parameters */}
+        <div className="rounded-2xl border border-blue-100/90 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900/90">
+          <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <Gauge size={16} className="text-blue-500" />
+            <span>Other Weather Parameters</span>
+          </div>
+
+          <div className="space-y-2.5 text-xs">
+            <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+              <div className="flex items-center gap-1.5">
+                <Wind size={13} className="text-blue-500" />
+                <span>Wind Gust</span>
+              </div>
+              <span className="font-semibold text-slate-900 dark:text-white">
+                {windGusts} km/h
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+              <div className="flex items-center gap-1.5">
+                <Thermometer size={13} className="text-blue-500" />
+                <span>Dew Point</span>
+              </div>
+              <span className="font-semibold text-slate-900 dark:text-white">
+                {dewPoint}°C
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+              <div className="flex items-center gap-1.5">
+                <Sun size={13} className="text-amber-500" />
+                <span>UV Index</span>
+              </div>
+              <span className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-bold ${getUvBadge(uvIndexVal).color}`}>
+                {getUvBadge(uvIndexVal).text}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+              <div className="flex items-center gap-1.5">
+                <Compass size={13} className="text-blue-500" />
+                <span>Atmospheric Pressure</span>
+              </div>
+              <span className="font-semibold text-slate-900 dark:text-white">
+                {pressure} hPa
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
+              <div className="flex items-center gap-1.5">
+                <Cloud size={13} className="text-blue-500" />
+                <span>Cloud Cover</span>
+              </div>
+              <span className="font-semibold text-slate-900 dark:text-white">
+                {cloudCover}%
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: Weather Alerts */}
         <div className="rounded-2xl border border-blue-100/90 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900/90">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
               <AlertTriangle size={16} className="text-amber-500" />
-              <span>Active Weather Advisories</span>
+              <span>Weather Alerts</span>
             </div>
             <button
               type="button"
@@ -1040,53 +1117,71 @@ export const WeatherPage: React.FC<WeatherPageProps> = ({
           </div>
         </div>
 
-        {/* Card 3: Data Sources & Ground Calibration */}
+        {/* Card 4: Data Sources & Last Updated */}
         <div className="rounded-2xl border border-blue-100/90 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900/90">
           <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
             <Database size={16} className="text-blue-500" />
-            <span>Data Sources & Calibration</span>
+            <span>Data Sources & Last Updated</span>
           </div>
 
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between rounded-lg bg-slate-50/80 p-2 dark:bg-slate-800/50">
               <div>
                 <p className="font-semibold text-slate-800 dark:text-slate-200">
-                  Open-Meteo High-Res API
+                  Weather Forecast (Open-Meteo)
                 </p>
-                <p className="text-[10px] text-slate-400">NWP ECMWF 0.1° Model</p>
+                <p className="text-[10px] text-slate-400">NWP ECMWF Model</p>
               </div>
               <div className="text-right">
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Live
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Updated
                 </span>
+                <p className="text-[9px] text-slate-400">{formattedTodayDate}, {formattedCurrentTime}</p>
               </div>
             </div>
 
             <div className="flex items-center justify-between rounded-lg bg-slate-50/80 p-2 dark:bg-slate-800/50">
               <div>
                 <p className="font-semibold text-slate-800 dark:text-slate-200">
-                  IMD / Surface AWS Gauges
+                  Rainfall Data (IMD / AWS)
                 </p>
-                <p className="text-[10px] text-slate-400">Karnataka State Rain Gauges</p>
+                <p className="text-[10px] text-slate-400">Surface Rain Gauges</p>
               </div>
               <div className="text-right">
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Calibrated
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Updated
                 </span>
+                <p className="text-[9px] text-slate-400">{formattedTodayDate}, 05:00 PM</p>
               </div>
             </div>
 
             <div className="flex items-center justify-between rounded-lg bg-slate-50/80 p-2 dark:bg-slate-800/50">
               <div>
                 <p className="font-semibold text-slate-800 dark:text-slate-200">
-                  CWC Basin Gauges
+                  River Gauge Levels (CWC)
                 </p>
-                <p className="text-[10px] text-slate-400">River Level Stage / Discharge</p>
+                <p className="text-[10px] text-slate-400">Central Water Commission</p>
               </div>
               <div className="text-right">
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Active
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Updated
                 </span>
+                <p className="text-[9px] text-slate-400">{formattedTodayDate}, 05:00 PM</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg bg-slate-50/80 p-2 dark:bg-slate-800/50">
+              <div>
+                <p className="font-semibold text-slate-800 dark:text-slate-200">
+                  Satellite Imagery (Sentinel-2)
+                </p>
+                <p className="text-[10px] text-slate-400">ESA Copernicus CDSE</p>
+              </div>
+              <div className="text-right">
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Updated
+                </span>
+                <p className="text-[9px] text-slate-400">{formattedTodayDate}, 06:00 AM</p>
               </div>
             </div>
           </div>
