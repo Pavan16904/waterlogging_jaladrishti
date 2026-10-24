@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "description": "AI-Based Waterlogging Detection and Drainage Advisory System Using Multi-Source Satellite Imagery",
   "scripts": {
-    "live": "start_live.bat",
+    "live": "live.bat start",
     "status": "node scripts/status.mjs",
     "stop": "node scripts/stop.mjs",
     "dev": "node scripts/runner.mjs",
